@@ -36,7 +36,7 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 7</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 8</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
@@ -55,7 +55,7 @@ a{color:#5cc3ff}
       <select id="order" aria-label="Order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option></select>
     </div>
     <div class="row">
-      <select id="timbre" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="mix">Sound: voices, changing</option><option value="tone">Sound: soft tone</option></select>
+      <select id="timbre" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="ohh">Sound: voice singing "oh"</option><option value="mix">Sound: voices, changing</option><option value="tone">Sound: soft tone</option></select>
       <select id="refLen" aria-label="Note length"><option value="2">Phone sings 2 s</option><option value="4" selected>Phone sings 4 s</option><option value="8">Phone sings 8 s (long)</option><option value="0">Keep singing with me (headphones only)</option></select>
       <select id="hold" aria-label="Hold"><option value="1">Hold 1 s to win</option><option value="2" selected>Hold 2 s to win</option><option value="3">Hold 3 s to win</option><option value="5">Hold 5 s to win</option><option value="8">Hold 8 s to win</option><option value="12">Hold 12 s to win</option></select>
       <select id="tol" aria-label="Accuracy"><option value="0.7" selected>Easy (within 70 cents)</option><option value="0.45">Normal (within 45 cents)</option><option value="0.25">Hard (within 25 cents)</option></select>
@@ -64,7 +64,7 @@ a{color:#5cc3ff}
       <select id="talk" aria-label="How often"><option value="often" selected>Spoken feedback every 1-2 s</option><option value="calm">Spoken feedback now and then</option></select>
       <select id="hints" aria-label="Hints"><option value="words" selected>Hints: spoken words</option><option value="tones">Hints: up / down beeps</option></select>
     </div>
-    <div class="row"><button id="demoUp" style="width:auto">Hear "go up"</button><button id="demoDown" style="width:auto">Hear "go down"</button><button id="demoOn" style="width:auto">Hear "on the note"</button></div>
+    <div class="row"><button id="demoUp" style="width:auto">Hear "go up"</button><button id="demoDown" style="width:auto">Hear "go down"</button><button id="demoOn" style="width:auto">Hear "on the note"</button><button id="demoVoice" style="width:auto">Hear the voice</button></div>
     <label><input type="checkbox" id="sayName" checked> Say the note name before each note</label><br>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label>
   </div>
@@ -115,22 +115,54 @@ async function startMic(){
 }
 const now=()=>ctx.currentTime;
 const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
-function voice(m,len,tb){ // a sung "aah"/"ooh" or a soft tone; len 0 = until stopped
+// Klatt-style singing voice: glottal pulses + breath noise through formant resonators
+const VOX={ // [F1..F5],[B1..B5] for male / female
+  aah:{m:[[730,1090,2440,3400,4000],[80,90,120,175,250]],f:[[850,1220,2810,3800,4600],[90,100,140,200,250]]},
+  ooh:{m:[[300,870,2240,3300,4000],[60,80,110,175,250]],f:[[370,950,2670,3700,4500],[70,90,130,200,250]]},
+  ohh:{m:[[500,850,2450,3350,4000],[70,80,120,175,250]],f:[[560,920,2700,3700,4500],[80,90,130,200,250]]}
+};
+function singSamples(f0,dur,vowel,sr,seed=1){
+  const n=Math.floor(dur*sr),out=new Float32Array(n),fem=f0>210,V=VOX[vowel]||VOX.aah,[F,B]=fem?V.f:V.m;
+  let rnd=seed*9301+49297;const rand=()=>{rnd=(rnd*9301+49297)%233280;return rnd/233280};
+  const res=F.map((f,i)=>{const r=Math.exp(-Math.PI*B[i]/sr),c=-r*r,b=2*r*Math.cos(2*Math.PI*f/sr),a=1-b-c;return {a,b,c,y1:0,y2:0}});
+  let ph=0,prevG=0,tilt=0,drift=0,driftT=0,vibPh=rand()*6.28,noiseLP=0;
+  const vibRate=5.2+rand()*0.6;
+  for(let i=0;i<n;i++){
+    const t=i/sr;
+    if(i%256===0){driftT=(rand()-0.5)*0.06}drift+=(driftT-drift)*0.0005;          // slow wander, a few cents
+    const vibDepth=0.12*Math.min(1,Math.max(0,(t-0.35)/0.6));                        // vibrato grows in gently (semitones)
+    const scoop=-0.35*Math.exp(-t/0.06);                                              // tiny scoop up into the note
+    const semi=scoop+drift+vibDepth*Math.sin(vibPh);vibPh+=2*Math.PI*vibRate/sr;
+    const f=f0*Math.pow(2,semi/12);ph+=f/sr;if(ph>=1)ph-=1;
+    const Tp=0.42,Tn=0.18;let g=ph<Tp?0.5*(1-Math.cos(Math.PI*ph/Tp)):ph<Tp+Tn?Math.cos(Math.PI*(ph-Tp)/(2*Tn)):0; // Rosenberg glottal flow
+    let src=(g-prevG)*sr/f0/6;prevG=g;                                                // flow derivative (lip radiation)
+    noiseLP+=0.5*((rand()*2-1)-noiseLP);src+=noiseLP*(0.012+0.05*g);                 // breath, stronger when glottis open
+    tilt+=0.45*(src-tilt);let x=tilt;                                                 // soften the top end
+    for(const r of res){const y=r.a*x+r.b*r.y1+r.c*r.y2;r.y2=r.y1;r.y1=y;x=y}        // formant cascade
+    const env=Math.min(1,t/0.12)*Math.min(1,(dur-t)/0.25)*(1+0.04*Math.sin(vibPh));
+    out[i]=x*env;
+  }
+  let pk=0;for(const v of out)pk=Math.max(pk,Math.abs(v));if(pk)for(let i=0;i<n;i++)out[i]*=0.6/pk;
+  return out;
+}
+const vcache=new Map();
+function voice(m,len,tb){ // a human-like sung vowel, or a soft tone; len 0 = keeps going until stopped
   const t=now(),f=m2f(m),out=ctx.createGain(),oscs=[];out.connect(master);
-  out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(1,t+0.15);
+  out.gain.setValueAtTime(1,t);
   if(tb==='tone'){
     const o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain();o.type='triangle';o.frequency.value=f;o2.frequency.value=2*f;g.gain.value=0.35;g2.gain.value=0.06;
-    o.connect(g);o2.connect(g2);g.connect(out);g2.connect(out);oscs.push(o,o2);
+    out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(1,t+0.15);
+    o.connect(g);o2.connect(g2);g.connect(out);g2.connect(out);oscs.push(o,o2);o.start(t);o2.start(t);
   }else{
-    const o=ctx.createOscillator(),lfo=ctx.createOscillator(),lg=ctx.createGain();o.type='sawtooth';o.frequency.value=f;
-    lfo.frequency.value=5;lg.gain.value=f*0.004;lfo.connect(lg);lg.connect(o.frequency);oscs.push(o,lfo);
-    for(const [F,a,B] of FORM[tb]){const bp=ctx.createBiquadFilter(),g=ctx.createGain();bp.type='bandpass';bp.frequency.value=F;bp.Q.value=F/B;g.gain.value=a*(tb==="ooh"?1.6:2.6);o.connect(bp);bp.connect(g);g.connect(out)}
+    const d=len||20,key=m+'|'+d+'|'+tb;let ab=vcache.get(key);
+    if(!ab){ab=ctx.createBuffer(1,Math.floor(d*ctx.sampleRate),ctx.sampleRate);ab.getChannelData(0).set(singSamples(f,d,tb,ctx.sampleRate,m));if(vcache.size>40)vcache.clear();vcache.set(key,ab)}
+    const src=ctx.createBufferSource();src.buffer=ab;src.loop=!len;src.connect(out);src.start(t);oscs.push(src);
   }
-  oscs.forEach(o=>o.start(t));
   const stop=(at=now())=>{out.gain.cancelScheduledValues(at);out.gain.setValueAtTime(out.gain.value,at);out.gain.linearRampToValueAtTime(0,at+0.2);oscs.forEach(o=>{try{o.stop(at+0.25)}catch(e){}})};
-  if(len)stop(t+len-0.2);
+  if(len&&tb==='tone')stop(t+len-0.2);
   return {stop};
 }
+
 function beeps(list,gap=0.13,type='sine',vol=0.25){const t=now();list.forEach((m,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*gap;o.type=type;o.frequency.value=m2f(m);o.connect(g);g.connect(master);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(vol,s+0.01);g.gain.exponentialRampToValueAtTime(0.001,s+gap*2.2);o.start(s);o.stop(s+gap*2.3)});return list.length*gap+gap*1.3}
 function speak(text){
   return new Promise(res=>{
@@ -240,6 +272,7 @@ document.addEventListener('visibilitychange',()=>{if(running&&document.visibilit
 const demoCtx=()=>{if(!ctx){ctx=new AudioContext();}if(!master){master=ctx.createGain();master.gain.value=0.9;master.connect(ctx.destination)}ctx.resume()};
 $('demoUp').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(true,now()+0.05+i*0.9,n))};
 $('demoDown').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(false,now()+0.05+i*0.9,n))};
+$('demoVoice').onclick=()=>{demoCtx();const b=+$('range').value+7,tb=$('timbre').value==='mix'?'aah':$('timbre').value;voice(b,2.5,tb)};
 $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5);setTimeout(()=>beeps([72,76,79,84],0.11,'triangle',0.3),2100)};
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
@@ -330,7 +363,7 @@ const cStats=()=>{$('stats').textContent=`${C.good} of ${C.total} notes right`};
 async function compareLoop(){
   const w=()=>$('hints').value==='words',tol=+$('tol').value;
   while(running&&C){
-    const n=pickNote();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ooh'][C.total%2]:$('timbre').value;
+    const n=pickNote();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ohh','ooh'][C.total%3]:$('timbre').value;
     status('Listen: '+SOL[pc(n)]);if($('sayName').checked)await speak(SAY[pc(n)]);if(!running||!C)return;
     voice(n,2,timb);await wait(2.3);let ok=false;
     for(let tr=1;tr<=3;tr++){
