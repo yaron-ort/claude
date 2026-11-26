@@ -36,13 +36,14 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing</h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 5</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
   <p style="font-size:14px;margin:6px 0">Bluetooth headphones: connect them after the mic is on.</p>
+  <button id="recTest" style="margin-top:6px">Test: record me for 2 seconds and play it back</button>
   <button class="go" id="goBtn">2. Start walking</button>
   <p class="err" id="err" hidden></p>
   <button id="setBtn" style="margin-top:8px">Settings</button>
@@ -323,6 +324,12 @@ function stopGame(msg){
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
   $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;
 }
+$('recTest').onclick=async()=>{
+  await $('micOn').onclick();if(!mic)return;const b=$('recTest');b.disabled=true;b.textContent='Recording… sing now';
+  const frames=[],old=proc.onaudioprocess;proc.onaudioprocess=e=>{frames.push(Float32Array.from(e.inputBuffer.getChannelData(0)))};
+  await wait(2);proc.onaudioprocess=old;b.textContent='Playing it back…';await playRec(frames);
+  b.textContent='Test: record me for 2 seconds and play it back';b.disabled=false;
+};
 $('goBtn').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;
   if($('mode').value==='echo'){buildNotes();E={level:1,lives:3,score:0,tune:null};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
