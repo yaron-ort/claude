@@ -25,6 +25,13 @@ h2{font-size:22px;margin:0 0 10px}
 .fig{position:relative;height:clamp(300px,48vh,480px);border-radius:18px;overflow:hidden;background:var(--bg2);box-shadow:0 20px 50px #0008,inset 0 1px 0 #ffffff14}
 .fig canvas{position:absolute;inset:0;width:100%;height:100%}
 .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--mute);pointer-events:none}
+.hud{position:absolute;top:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:none;max-width:calc(100% - 90px)}
+.hud div{background:#1b0a12cc;border:1px solid var(--line);border-radius:10px;padding:4px 10px;text-align:center;line-height:1.15}
+.hud b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.hud span{font-size:12px;color:var(--mute)}
+.hud .pts b{color:var(--on);font-size:24px}.hud .mul b{color:var(--hi)}
+.pop{position:absolute;left:30%;top:40%;transform:translate(-50%,-50%);font-size:clamp(22px,4vw,34px);font-weight:800;color:var(--hi);text-shadow:0 2px 12px #000;pointer-events:none;animation:pop 1.3s ease-out forwards;white-space:nowrap}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-140%) scale(1)}}
+@media(prefers-reduced-motion:reduce){.pop{animation-duration:2s}}
 .empty b{display:block;color:var(--ink);font-size:20px;margin-bottom:4px}
 .meter{border-radius:18px;background:var(--bg2);padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;box-shadow:inset 0 1px 0 #ffffff14}
 .note{font-size:52px;font-weight:800;line-height:1}
@@ -68,12 +75,19 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 6</span></h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 8</span></h1>
   <p class="sub">Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
     <div class="fig" id="fig">
       <canvas id="cv"></canvas>
+      <div class="hud" id="hud" hidden>
+        <div class="pts"><b id="gPts">0</b><span>points</span></div>
+        <div class="mul"><b id="gMul">x1</b><span>combo</span></div>
+        <div><b id="gSec">0.0 s</b><span>on pitch</span></div>
+        <div><b id="gStreak">0.0 s</b><span>streak</span></div>
+        <div><b id="gLong">0.0 s</b><span>longest</span></div>
+      </div>
       <div class="empty" id="empty"><div><b>Pick a song or an exercise to start</b>Use headphones so the microphone only hears you.</div></div>
     </div>
     <div class="meter" aria-live="polite">
@@ -212,31 +226,55 @@ function clean(a){
 }
 
 // ---------- exercises (clean synthesized notes) ----------
+// s = seconds per note, r = rest after each note (s), legato = one unbroken voice, [semi, sec, glideTo]
 const EX=[
-  {n:'Warm-up: 1-2-3-2-1',p:[0,2,4,2,0],b:1},
-  {n:'Five-note scale',p:[0,2,4,5,7,5,4,2,0],b:1},
-  {n:'Full major scale',p:[0,2,4,5,7,9,11,12,11,9,7,5,4,2,0],b:0.75},
-  {n:'Arpeggio jumps',p:[0,4,7,12,7,4,0],b:1},
-  {n:'Long steady notes',p:[0,4,7,4,0],b:3},
-  {n:'Interval leaps',p:[0,7,0,5,0,4,0,12,0],b:1.25},
-  {n:'Very long notes (8 s each)',p:[0,2,4,5,7,5,4,2,0],b:13.33,r:2},
-  {n:'Hold one note (15 s)',p:[0],b:25,r:3}
+  {g:'Warm-ups and scales',n:'Warm-up: 1-2-3-2-1',p:[0,2,4,2,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Five-note scale',p:[0,2,4,5,7,5,4,2,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Full major scale',p:[0,2,4,5,7,9,11,12,11,9,7,5,4,2,0],s:0.45},
+  {g:'Warm-ups and scales',n:'Arpeggio jumps',p:[0,4,7,12,7,4,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Interval leaps',p:[0,7,0,5,0,4,0,12,0],s:0.75},
+  {g:'Long notes',n:'Very long notes up and down (8 s)',p:[0,2,4,5,7,5,4,2,0],s:8,r:1.2},
+  {g:'Long notes',n:'Hold one note (15 s)',p:[0],s:15,r:1.8},
+  {g:'Long notes',n:'Growing holds: 4, 6, 8, 10, 12 s',seq:[[0,4],[0,6],[0,8],[0,10],[0,12]],r:1.5},
+  {g:'Long notes',n:'Long notes going down (8 s)',p:[7,5,4,2,0],s:8,r:1.2},
+  {g:'Long notes',n:'Long chord tones Do-Mi-Sol-Do (6 s)',p:[0,4,7,12,7,4,0],s:6,r:1.2},
+  {g:'Long notes',n:'Long leaps (6 s)',p:[0,7,0,5,0,12,0],s:6,r:1.2},
+  {g:'Long notes',n:'Slide and hold (no breaks)',legato:true,seq:[[0,4],[0,1.2,2],[2,4],[2,1.2,4],[4,4],[4,1.2,7],[7,5],[7,2,0],[0,5]],r:2},
+  {g:'Long notes',n:'Breath marathon: 6 notes x 10 s, no rests',legato:true,seq:[[0,10],[4,10],[7,10],[5,10],[2,10],[0,10]],r:2},
+  {g:'Long notes',n:'Surprise holds (random notes, 5-9 s)',rand:true,r:1.2}
 ];
-$('exSel').insertAdjacentHTML('beforeend',EX.map((e,i)=>`<option value="${i}">${e.n}</option>`).join(''));
+{const groups=[...new Set(EX.map(e=>e.g))];
+ $('exSel').insertAdjacentHTML('beforeend',groups.map(g=>`<optgroup label="${g}">`+EX.map((e,i)=>e.g===g?`<option value="${i}">${e.n}</option>`:'').join('')+'</optgroup>').join(''));}
+function seqOf(e){
+  if(e.rand){const pool=[0,2,4,5,7,9,12],out=[];let last=-1;for(let k=0;k<6;k++){let x;do{x=pool[Math.floor(Math.random()*pool.length)]}while(x===last);last=x;out.push([x,5+Math.round(Math.random()*4)])}return out}
+  return e.seq||e.p.map(x=>[x,e.s]);
+}
 async function buildExercise(i,base){
-  const e=EX[i],beat=0.6,notes=[];let t=1.5;
-  for(const up of [0,2,4]){for(const p of e.p){notes.push({t,d:e.b*beat,m:base+up+p});t+=(e.b+(e.r||0))*beat}t+=beat*2}
-  const dur=t+0.5,SR=44100,oc=new OfflineAudioContext(1,Math.ceil(dur*SR),SR);
-  for(const n of notes){
-    const o=oc.createOscillator(),o2=oc.createOscillator(),g=oc.createGain(),f=440*2**((n.m-69)/12);
-    o.type='triangle';o.frequency.value=f;o2.type='sine';o2.frequency.value=f*2;
-    const g2=oc.createGain();g2.gain.value=0.15;o2.connect(g2);g2.connect(g);o.connect(g);g.connect(oc.destination);
-    g.gain.setValueAtTime(0,n.t);g.gain.linearRampToValueAtTime(0.35,n.t+0.03);
-    g.gain.setValueAtTime(0.35,n.t+n.d-0.08);g.gain.linearRampToValueAtTime(0,n.t+n.d-0.01);
-    o.start(n.t);o2.start(n.t);o.stop(n.t+n.d);o2.stop(n.t+n.d);
+  const e=EX[i],voices=[];let t=1.5;
+  for(const up of (e.rand?[0]:[0,2,4])){
+    const sq=seqOf(e);
+    if(e.legato){const v={t,segs:[]};for(const [m,d,to] of sq){v.segs.push({m:base+up+m,d,to:to==null?null:base+up+to});t+=d}voices.push(v);t+=e.r||1}
+    else for(const [m,d] of sq){voices.push({t,segs:[{m:base+up+m,d,to:null}]});t+=d+(e.r||0)}
+    t+=1.2;
   }
-  const buf=await oc.startRendering(),ref=new Float32Array(Math.ceil(dur/HOP)).fill(NaN);
-  for(const n of notes)for(let k=Math.ceil((n.t+0.02)/HOP);k<(n.t+n.d-0.03)/HOP;k++)ref[k]=n.m;
+  const dur=t+0.5,SR=44100,oc=new OfflineAudioContext(1,Math.ceil(dur*SR),SR),hz=m=>440*2**((m-69)/12);
+  const ref=new Float32Array(Math.ceil(dur/HOP)).fill(NaN);
+  for(const v of voices){
+    const D=v.segs.reduce((a,x)=>a+x.d,0),o=oc.createOscillator(),o2=oc.createOscillator(),g=oc.createGain(),g2=oc.createGain();
+    o.type='triangle';o2.type='sine';g2.gain.value=0.15;o2.connect(g2);g2.connect(g);o.connect(g);g.connect(oc.destination);
+    let st=v.t;
+    for(const sg of v.segs){
+      const f=hz(sg.m);o.frequency.setValueAtTime(f,st);o2.frequency.setValueAtTime(2*f,st);
+      if(sg.to!=null){o.frequency.exponentialRampToValueAtTime(hz(sg.to),st+sg.d);o2.frequency.exponentialRampToValueAtTime(2*hz(sg.to),st+sg.d)}
+      const k0=Math.ceil((st+(st===v.t?0.02:0))/HOP),k1=(st+sg.d-(st+sg.d>=v.t+D-1e-6?0.03:0))/HOP;
+      for(let k=k0;k<k1;k++){const fr=(k*HOP-st)/sg.d;ref[k]=sg.to==null?sg.m:sg.m+(sg.to-sg.m)*Math.max(0,Math.min(1,fr))}
+      st+=sg.d;
+    }
+    g.gain.setValueAtTime(0,v.t);g.gain.linearRampToValueAtTime(0.35,v.t+0.03);
+    g.gain.setValueAtTime(0.35,v.t+D-0.08);g.gain.linearRampToValueAtTime(0,v.t+D-0.01);
+    o.start(v.t);o2.start(v.t);o.stop(v.t+D);o2.stop(v.t+D);
+  }
+  const buf=await oc.startRendering();
   return {buf,ref};
 }
 
@@ -264,7 +302,7 @@ function setRange(){
 }
 function loaded(buf,r,name,blob){
   stop();if(player.src)URL.revokeObjectURL(player.src);player.src=URL.createObjectURL(blob||wavBlob(buf));songBuf=buf;ref=r;title=name;offset=0;resetTake();setRange();
-  ['playBtn','restartBtn','seek'].forEach(id=>$(id).disabled=false);
+  ['playBtn','restartBtn','seek'].forEach(id=>$(id).disabled=false);$('hud').hidden=false;
   $('seek').max=buf.duration;$('empty').hidden=true;$('scoreTitle').textContent='Your score: '+name;
   showBest();
 }
@@ -290,13 +328,33 @@ function showStats(){
   for(const [k,b,p] of [['on','bOn','pOn'],['hi','bHi','pHi'],['lo','bLo','pLo']]){$(b).style.width=pc(k)+'%';$(p).textContent=pc(k)+'%'}
   if(n>30){$('tip').textContent=stats.hi>stats.lo*1.5?'You tend to sing a little sharp (high). Relax and aim slightly lower.':stats.lo>stats.hi*1.5?'You tend to sing a little flat (low). Lift the note with more breath support.':'Your misses are balanced between high and low. Keep listening closely to each note.'}
 }
-function resetTake(){user=[];stats={on:0,hi:0,lo:0};showStats();recMode=false;recRaw=null;$('tip').textContent='Your score is the share of time you\'re on the singer\'s note while you both sing.'}
+let game={pts:0,sec:0,streak:0,long:0,miss:0,lastT:null,next:3};
+const MILES=[3,5,10,15,20,30,45,60];
+function resetGame(){game={pts:0,sec:0,streak:0,long:0,miss:0,lastT:null,next:3};showGame()}
+const mult=()=>Math.min(5,1+Math.floor(game.streak/3));
+function showGame(){$('gPts').textContent=Math.round(game.pts).toLocaleString();$('gMul').textContent='x'+mult();
+  $('gSec').textContent=game.sec.toFixed(1)+' s';$('gStreak').textContent=game.streak.toFixed(1)+' s';$('gLong').textContent=game.long.toFixed(1)+' s'}
+function pop(txt){const d=document.createElement('div');d.className='pop';d.textContent=txt;$('fig').appendChild(d);setTimeout(()=>d.remove(),2100)}
+function scoreFrame(t){ // called every frame while playing with live mic
+  const dt=game.lastT==null?0:Math.max(0,Math.min(0.1,t-game.lastT));game.lastT=t;if(!dt)return;
+  const singer=!isNaN(refAt(t-0.06));
+  if(cur&&cur.j.c==='on'){
+    game.miss=0;game.sec+=dt;game.streak+=dt;game.long=Math.max(game.long,game.streak);
+    const perfect=Math.abs(cur.j.d)<0.15;game.pts+=dt*100*mult()*(perfect?1.5:1);
+    if(game.streak>=game.next){pop(game.next+' s streak!'+(mult()>1?'  x'+mult():''));game.next=MILES.find(m=>m>game.streak)||game.next+30}
+  }else if(singer){game.miss+=dt;if(game.miss>0.3){game.streak=0;game.next=3}}
+  showGame();
+}
+function resetTake(){user=[];resetGame();stats={on:0,hi:0,lo:0};showStats();recMode=false;recRaw=null;$('tip').textContent='Your score is the share of time you\'re on the singer\'s note while you both sing.'}
 const bestKey=()=>'pitchpal:'+title+':'+$('tol').value;
-function showBest(){let b=null;try{b=localStorage.getItem(bestKey())}catch(e){}$('best').textContent=b?'Best so far: '+b+'%':' '}
+function showBest(){let b=null,p=null;try{b=localStorage.getItem(bestKey());p=localStorage.getItem(bestKey()+':pts')}catch(e){}
+  $('best').textContent=b||p?'Best: '+(b?b+'%':'')+(p?(b?', ':'')+(+p).toLocaleString()+' points':''):' '}
 function saveBest(){
-  const n=stats.on+stats.hi+stats.lo;if(n<50)return;const s=Math.round(100*stats.on/n);
-  try{const b=+localStorage.getItem(bestKey())||0;if(s>b){localStorage.setItem(bestKey(),s);info(`New best for this song: <b>${s}%</b>. Nice work!`)}else info(`Song finished: <b>${s}%</b> on pitch.`)}catch(e){info(`Song finished: <b>${s}%</b> on pitch.`)}
-  showBest();
+  const n=stats.on+stats.hi+stats.lo;if(n<50)return;const s=Math.round(100*stats.on/n),P=Math.round(game.pts);
+  let msg=`Finished! <b>${P.toLocaleString()} points</b>, <b>${game.sec.toFixed(1)} s</b> on pitch, longest streak <b>${game.long.toFixed(1)} s</b>, ${s}% accuracy.`;
+  try{const k=bestKey()+':pts',b=+localStorage.getItem(k)||0;if(P>b){localStorage.setItem(k,P);if(P>0)msg+=' <b>New high score!</b>'}
+    if(s>(+localStorage.getItem(bestKey())||0))localStorage.setItem(bestKey(),s)}catch(e){}
+  info(msg);showBest();
 }
 
 // ---------- transport ----------
@@ -307,7 +365,7 @@ async function play(){
   try{await player.play()}catch(e){playing=false;$('playBtn').textContent='Play';info('The phone did not let the song start. Tap Play again.');return}
   if(ctx)ctx.resume();
 }
-function stop(){if(playing)offset=now();player.pause();playing=false;$('playBtn').textContent='Play'}
+function stop(){game.lastT=null;if(playing)offset=now();player.pause();playing=false;$('playBtn').textContent='Play'}
 player.onended=()=>{if(playing){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest();
   if($('loop').checked&&!recMode)setTimeout(()=>{if(!playing&&offset>=dur()-0.1){const msg=$('info').innerHTML;resetTake();offset=0;play();info(msg+' Starting again…')}},2000)}};
 function seek(t){const was=playing;stop();offset=Math.max(0,Math.min(t,dur()));if(!recMode){user=user.filter(p=>p.t<offset);recount()}if(was)play()}
@@ -333,7 +391,7 @@ async function loadEx(){
   const i=$('exSel').value;if(i==='')return;ensureCtx();
   const {buf,ref:r}=await buildExercise(+i,+$('voiceSel').value);
   loaded(buf,r,EX[i].n+' ('+$('voiceSel').selectedOptions[0].text.toLowerCase()+')');
-  info('Exercise ready. Listen to each note and match it. The pattern repeats, moving up a step each time.');
+  info(EX[i].g==='Long notes'?'Long notes: breathe low, then hold each note steady to build a big streak. The pattern repeats a step higher each time.':'Exercise ready. Listen to each note and match it. The pattern repeats, moving up a step each time.');
 };
 $('exSel').onchange=loadEx;$('voiceSel').onchange=()=>{if($('exSel').value!=='')loadEx()};
 
@@ -406,8 +464,8 @@ function frame(){
     let hz=rmsOf(micBuf,micBuf.length)>0.008?yin(micBuf,ctx.sampleRate,0.15,65,1100):0;
     if(hz){smooth.push(f2m(hz));if(smooth.length>3)smooth.shift();const m=[...smooth].sort((a,b)=>a-b)[smooth.length>>1];
       const j=judge(t-0.06,m);cur={m,j};
-      if(playing&&!recMode){user.push({t:t-0.06,m,j});if(j.c!=='none')stats[j.c]++;if(user.length%15===0)showStats()}
-    }else{smooth=[];cur=null}
+      if(playing&&!recMode){user.push({t:t-0.06,m,j});scoreFrame(t);if(j.c!=='none')stats[j.c]++;if(user.length%15===0)showStats()}
+    }else{smooth=[];cur=null;if(playing&&!recMode)scoreFrame(t)}
   }else if(recMode&&ref){const p=user.find(p=>Math.abs(p.t-t)<HOP);cur=p?{m:p.m,j:p.j}:null}
   meter();
   if(songBuf){$('seek').value=t;$('time').textContent=fmt(t)+' / '+fmt(dur())}
