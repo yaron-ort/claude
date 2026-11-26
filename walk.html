@@ -58,6 +58,7 @@ a{color:#5cc3ff}
       <select id="tol" aria-label="Accuracy"><option value="0.7" selected>Easy (within 70 cents)</option><option value="0.45">Normal (within 45 cents)</option><option value="0.25">Hard (within 25 cents)</option></select>
       <select id="limit" aria-label="Move on"><option value="20">Next note after 20 s</option><option value="30" selected>Next note after 30 s</option><option value="45">Next note after 45 s</option></select>
       <select id="live" aria-label="Live sounds"><option value="on" selected>Live sounds while I sing (parking sensor)</option><option value="off">No live sounds</option></select>
+      <select id="talk" aria-label="How often"><option value="often" selected>Spoken feedback every 1-2 s</option><option value="calm">Spoken feedback now and then</option></select>
       <select id="hints" aria-label="Hints"><option value="words" selected>Hints: spoken words</option><option value="tones">Hints: up / down beeps</option></select>
     </div>
     <div class="row"><button id="demoUp" style="width:auto">Hear "go up"</button><button id="demoDown" style="width:auto">Hear "go down"</button><button id="demoOn" style="width:auto">Hear "on the note"</button></div>
@@ -88,7 +89,7 @@ function yin(b,sr,thr){
 }
 
 // ---------- settings ----------
-const SET=['range','key','scale','order','timbre','refLen','hold','tol','limit','hints','live'];
+const SET=['range','key','scale','order','timbre','refLen','hold','tol','limit','hints','live','talk'];
 try{const sv=JSON.parse(localStorage.getItem('pitchwalk:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sayName!=null)$('sayName').checked=sv.sayName;if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
 const save=()=>{try{const sv={sayName:$('sayName').checked,fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchwalk:set',JSON.stringify(sv))}catch(e){}};
 for(const k of [...SET,'sayName','fold'])$(k).addEventListener('change',save);
@@ -162,23 +163,29 @@ async function newRound(){
   if(!running)return;
   const n=pickNote();tried++;showStats();
   timb=$('timbre').value==='mix'?['aah','ooh'][tried%2]:$('timbre').value;
-  R={note:n,on:0,off:0,grace:0,sil:0,lastHint:0,hints:0,t0:0,mute:0,nextBlip:0,nextChime:0.5,lastOn:false};
+  R={lastRef:0,lastPraise:0,lastNudge:0,note:n,on:0,off:0,grace:0,sil:0,lastHint:0,hints:0,t0:0,mute:0,nextBlip:0,nextChime:0.5,lastOn:false};
   status('Listen: '+SOL[pc(n)]);
   if($('sayName').checked){await speak(SAY[pc(n)]);await wait(0.15)}
   if(!running)return;
   await playRef();if(!running)return;
-  R.t0=now();R.lastHint=now();status('Your turn: '+SOL[pc(n)]);busy=false;
+  R.t0=now();R.lastRef=now();R.lastHint=now();status('Your turn: '+SOL[pc(n)]);busy=false;
 }
 async function hint(d){
   busy=true;R.hints++;R.off=0;
   const a=Math.abs(d),up=d<0,sung=R.note+d,w=up?'higher':'lower',dirw=up?'up':'down';
-  if(a<1){status((up?'▲ ':'▼ ')+'Just a little '+w);if($('hints').value==='words')await speak('just a little '+w)}
+  const often=$('talk').value==='often';
+  if(often&&R.hints>1){const ph=a<1?'a bit '+dirw:a<1.75?'half step '+dirw:a<3?'one step '+dirw:a<4.5?'two steps '+dirw:'way '+dirw;
+    status((up?'▲ ':'▼ ')+ph[0].toUpperCase()+ph.slice(1));if($('hints').value==='words')await speak(ph)}
+  else if(a<1){status((up?'▲ ':'▼ ')+'Just a little '+w);if($('hints').value==='words')await speak('just a little '+w)}
   else{const amt=a<1.75?'a half step':a<3?'one step':a<4.5?'two steps':'a big jump';
     status(`${up?'▲':'▼'} You sing ${SOL[pc(sung)]}, go ${dirw} to ${SOL[pc(R.note)]} (${amt})`);
     if($('hints').value==='words')await speak(`You're on ${SAY[pc(sung)]}. Go ${dirw} ${amt}, to ${SAY[pc(R.note)]}`)}
   if($('hints').value!=='words')await wait(beeps(up?(a<1?[79,81]:a<3?[76,83]:[72,84]):(a<1?[81,79]:a<3?[83,76]:[84,72]),0.14,'square',0.12));
-  if(R.hints%2===0&&+$('refLen').value>0){await wait(0.2);status('Listen again');voice(R.note,1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
+  if(+$('refLen').value>0&&now()-R.lastRef>(often?9:0)&&(often||R.hints%2===0)){R.lastRef=now()+1.8;await wait(0.2);status('Listen again');voice(R.note,1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
   await wait(0.25);R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false;
+}
+async function say(text,keepOn){ // short spoken feedback; hold progress keeps counting while it talks
+  busy=true;const t0=now();await speak(text);if(keepOn&&R)R.on+=now()-t0;if(R)R.lastNudge=now();busy=false;
 }
 async function win(){
   busy=true;score++;showStats();if(drone){drone.stop();drone=null}status('Yes!');
@@ -215,7 +222,12 @@ function tick(buf,dt){
       if(live&&t>=R.nextBlip){const far=Math.min(1,Math.max(0,(Math.abs(d)-tol)/3));const n=Math.abs(d)<1?1:Math.abs(d)<2.5?2:3;blip(d<0,t,n);R.nextBlip=t+0.8+0.11*n-0.5*far;R.mute=t+0.11*n+0.15}}
   }else{R.sil+=dt;R.lastOn=false;if(R.sil>0.6){R.on=0;R.nextChime=0.5}}
   if(R.on>=hold){win();return}
-  if(R.off>(live?4:1.5)&&t-R.lastHint>(live?7:3.5)){hint(R.lastD);return}
+  const often=$('talk').value==='often'&&$('hints').value==='words';
+  if(often){
+    if(R.off>0.8&&t-R.lastHint>1.2&&t-R.lastNudge>1.2){hint(R.lastD);return}
+    if(R.lastOn&&R.on>0.7&&R.on<hold-0.3&&t-R.lastPraise>1.8&&t-R.lastNudge>1.2){R.lastPraise=now();status('✓ On the note, hold it');say(['yes','good','hold it','that\'s it','keep going'][Math.floor(Math.random()*5)],true);return}
+    if(R.sil>2.5&&t-R.lastNudge>3&&t-R.lastHint>3){status('Sing '+SOL[pc(R.note)]);say('sing '+SAY[pc(R.note)]);return}
+  }else if(R.off>(live?4:1.5)&&t-R.lastHint>(live?7:3.5)){hint(R.lastD);return}
   if(R.sil>7&&+$('refLen').value>0){busy=true;R.sil=0;status('Listen again');playRef().then(()=>{R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false});return}
   if(t-R.t0>+$('limit').value){giveUp();return}
 }
