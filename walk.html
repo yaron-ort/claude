@@ -36,7 +36,7 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 6</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 7</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
@@ -293,7 +293,7 @@ async function wrongNote(d){ // let them hear the difference, then carry on
   await wait(beeps([60],0.15,'triangle',0.2));
   if(w)await speak('You');await playRec(frames);await wait(0.25);
   if(w)await speak('Target');voice(target,1.1,timb);await wait(1.3);
-  if(w)await speak(a<1.75?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower'));
+  if(w)await speak((up?'Too low. Sing ':'Too high. Sing ')+(a<1.75?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower')));
   await wait(0.3);if(!running||!E)return;
   if(!nextNote()){beeps([96],0.06,'sine',0.12);await wait(0.3);E.t=now();busy=false}
 }
@@ -342,7 +342,7 @@ async function compareLoop(){
       status('You…');if(w())await speak('You');await playRec(C.frames.slice(-Math.ceil(3*ctx.sampleRate/2048)));await wait(0.25);
       status('Target…');if(w())await speak('Target');voice(n,1.6,timb);await wait(1.9);
       if(Math.abs(med)<=tol){ok=true;C.good++;cStats();status('✓ Got it!');await wait(beeps([72,76,79,84],0.11,'triangle',0.3));if(w())await speak(['Good!','Yes, that\'s it!','Great!','Perfect!'][Math.floor(Math.random()*4)]);break}
-      const a=Math.abs(med),up=med<0,tip=a<1?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower');
+      const a=Math.abs(med),up=med<0,tip=(up?'You were too low. Sing ':'You were too high. Sing ')+(a<1?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower'));
       status(`${up?'▲':'▼'} ${tip}`);if(w())await speak(tr<3?tip+'. Try again.':tip+'. Next note.');else await wait(beeps(up?[79,84]:[84,79],0.15,'square',0.12));
     }
     if(!ok&&!w())await wait(0.3);await wait(0.7);
