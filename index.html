@@ -68,7 +68,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 3</span></h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 4</span></h1>
   <p class="sub">Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
@@ -240,7 +240,11 @@ let ctx=null,songBuf=null,ref=null,src=null,songGain=null,startAt=0,offset=0,pla
 let lo=48,hi=72,user=[],recMode=false,recRaw=null,stats={on:0,hi:0,lo:0},cur=null;
 let mic=null,an=null,micBuf=null,smooth=[];
 const ensureCtx=()=>{if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();songGain=ctx.createGain();songGain.gain.value=+$('vol').value;songGain.connect(ctx.destination)}return ctx};
-const now=()=>playing?ctx.currentTime-startAt:offset;
+const player=new Audio();player.preload='auto';player.volume=+$('vol').value;
+const now=()=>playing?player.currentTime:offset;
+function wavBlob(b){const x=b.getChannelData(0),n=x.length,sr=b.sampleRate,v=new DataView(new ArrayBuffer(44+n*2)),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32000,true);return new Blob([v],{type:'audio/wav'})}
 const dur=()=>songBuf?songBuf.duration:0;
 const tolV=()=>+$('tol').value;
 const refAt=t=>{const i=Math.round(t/HOP);return ref&&i>=0&&i<ref.length?ref[i]:NaN};
@@ -253,8 +257,8 @@ function setRange(){
   lo=Math.floor(p(0.03))-3;hi=Math.ceil(p(0.97))+3;
   if(hi-lo<14){const c=(hi+lo)/2;lo=Math.floor(c-7);hi=lo+14}
 }
-function loaded(buf,r,name){
-  stop();songBuf=buf;ref=r;title=name;offset=0;resetTake();setRange();
+function loaded(buf,r,name,blob){
+  stop();if(player.src)URL.revokeObjectURL(player.src);player.src=URL.createObjectURL(blob||wavBlob(buf));songBuf=buf;ref=r;title=name;offset=0;resetTake();setRange();
   ['playBtn','restartBtn','seek'].forEach(id=>$(id).disabled=false);
   $('seek').max=buf.duration;$('empty').hidden=true;$('scoreTitle').textContent='Your score: '+name;
   showBest();
@@ -292,18 +296,19 @@ function saveBest(){
 
 // ---------- transport ----------
 async function play(){
-  if(!songBuf||playing)return;ensureCtx();await ctx.resume();
+  if(!songBuf||playing)return;
   if(offset>=dur()-0.1)offset=0;
-  src=ctx.createBufferSource();src.buffer=songBuf;src.connect(songGain);
-  startAt=ctx.currentTime-offset;src.start(0,offset);playing=true;$('playBtn').textContent='Pause';
-  src.onended=()=>{if(playing&&now()>=dur()-0.1){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest()}};
+  player.currentTime=offset;playing=true;$('playBtn').textContent='Pause';
+  try{await player.play()}catch(e){playing=false;$('playBtn').textContent='Play';info('The phone did not let the song start. Tap Play again.');return}
+  if(ctx)ctx.resume();
 }
-function stop(){if(src){src.onended=null;try{src.stop()}catch(e){}src=null}if(playing)offset=now();playing=false;$('playBtn').textContent='Play'}
+function stop(){if(playing)offset=now();player.pause();playing=false;$('playBtn').textContent='Play'}
+player.onended=()=>{if(playing){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest()}};
 function seek(t){const was=playing;stop();offset=Math.max(0,Math.min(t,dur()));if(!recMode){user=user.filter(p=>p.t<offset);recount()}if(was)play()}
 $('playBtn').onclick=()=>playing?stop():play();
 $('restartBtn').onclick=()=>{const keep=recMode;stop();offset=0;if(!keep)resetTake();info('',false);play()};
 $('seek').oninput=e=>seek(+e.target.value);
-$('vol').oninput=e=>{if(songGain)songGain.gain.value=+e.target.value};
+$('vol').oninput=e=>{player.volume=+e.target.value};
 $('fold').onchange=$('tol').onchange=()=>{recount();showBest()};
 
 $('songFile').onchange=async e=>{
@@ -313,7 +318,7 @@ $('songFile').onchange=async e=>{
     const buf=await ctx.decodeAudioData(await f.arrayBuffer());
     const r=await track(buf,0.25,p=>{const g=$('pg');if(g)g.style.width=(p*100)+'%'});
     const voiced=r.filter(x=>!isNaN(x)).length/r.length;
-    loaded(buf,r,f.name.replace(/\.[^.]+$/,''));
+    loaded(buf,r,f.name.replace(/\.[^.]+$/,''),f);
     info(voiced<0.15?`I could only find a clear singing voice in ${Math.round(voiced*100)}% of this song. The backing music may be too busy: try a vocals-only or acoustic version for better feedback.`:`Ready. I found the singer's voice in about ${Math.round(voiced*100)}% of the song. Press Play and sing along.`);
   }catch(err){info('Sorry, this file could not be read as audio. Try an MP3, M4A or WAV file.')}
   e.target.value='';
