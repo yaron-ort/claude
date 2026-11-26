@@ -36,6 +36,11 @@ a{color:var(--lo)}
 .err{color:var(--hi)}
 #target{position:fixed;left:50%;top:78px;transform:translateX(-50%);background:#1b0a12d9;border:1px solid var(--line);border-radius:14px;padding:6px 18px;text-align:center;pointer-events:none;line-height:1.1}
 #target span{font-size:13px;color:var(--mute)}#target b{display:block;font-size:40px;font-weight:800;color:var(--on)}#target i{display:block;font-style:normal;font-weight:700;font-size:16px;min-height:1.2em}
+.pop{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);font-size:clamp(34px,9vw,60px);font-weight:800;color:#ffd166;text-shadow:0 0 24px #ffd16699,0 3px 0 #7a4a00;pointer-events:none;animation:pop 1.6s ease-out forwards;white-space:nowrap;text-align:center;line-height:1}
+.pop small{display:block;font-size:.4em;color:var(--ink);text-shadow:none;margin-top:6px}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-90%) scale(1)}}
+#target.perfect{border-color:#ffd166;box-shadow:0 0 24px #ffd16655}#target.perfect b{color:#ffd166}
+@media(prefers-reduced-motion:reduce){.pop{animation-duration:2.4s}}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -53,9 +58,13 @@ a{color:var(--lo)}
   <div class="card">
     <h1>Pitch Glider</h1>
     <p>Your voice is the bird's wings. Sing <b>higher</b> to rise, <b>lower</b> to drop, and stay quiet to glide down. Hold the right note to fly through each gate. Long tunnels mean long notes!</p>
+    <p id="sumLine" style="font-size:14px"></p>
+    <button class="go" id="goBtn">Start singing</button>
+    <button id="setBtn" style="width:100%;margin-top:8px" aria-expanded="false">Settings</button>
+    <div id="settings" hidden>
     <div class="row">
-      <select id="range" aria-label="Voice range"><option value="45">Lower voice</option><option value="52">Middle voice</option><option value="57">Higher voice</option></select>
-      <select id="diff" aria-label="Difficulty"><option value="0">Beginner (very slow)</option><option value="1" selected>Easy</option><option value="2">Normal</option><option value="3">Hard</option></select>
+      <select id="range" aria-label="Voice range"><option value="45">Lower voice</option><option value="52" selected>Middle voice</option><option value="57">Higher voice</option></select>
+      <select id="diff" aria-label="Difficulty"><option value="0" selected>Beginner (very slow)</option><option value="1">Easy</option><option value="2">Normal</option><option value="3">Hard</option></select>
     </div>
     <div class="row">
       <select id="key" aria-label="Scale key"><option value="0">Do (C)</option><option value="2">Re (D)</option><option value="4">Mi (E)</option><option value="5">Fa (F)</option><option value="7">Sol (G)</option><option value="9">La (A)</option><option value="11">Si (B)</option><option value="1">Do# (C#)</option><option value="3">Re# (D#)</option><option value="6">Fa# (F#)</option><option value="8">Sol# (G#)</option><option value="10">La# (A#)</option></select>
@@ -65,7 +74,7 @@ a{color:var(--lo)}
     <div class="row"><select id="guide" aria-label="Guide note"><option value="hold" selected>Keep playing the note until I pass the gate</option><option value="hint">Play each note once, briefly</option><option value="off">No guide note</option></select></div>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label><br>
     <button id="listen" style="margin-top:6px">Listen to the scale</button>
-    <button class="go" id="goBtn">Start singing</button>
+    </div>
     <p class="err" id="err" hidden></p>
     <p style="font-size:14px">Use headphones: otherwise the mic hears the guide note too. Bluetooth headphones on Android: connect them after you press Start. <a href="pitch-pal.html">Back to Pitch Pal</a></p>
   </div>
@@ -77,6 +86,7 @@ a{color:var(--lo)}
     <div class="big" id="eScore">0</div><p id="eBest">&nbsp;</p>
     <div class="stats">
       <span>Gates passed</span><b id="eGates">0</b>
+      <span>Perfect gates</span><b id="ePerf">0</b>
       <span>Seconds on the note</span><b id="eSec">0</b>
       <span>Longest hold</span><b id="eHold">0</b>
       <span>Distance</span><b id="eDist">0</b>
@@ -137,11 +147,13 @@ function guide(note){ // a soft, steady guide tone; note=null fades it out
     if(gv.note==null){gv.o.frequency.setValueAtTime(m2f(note),t);gv.o2.frequency.setValueAtTime(2*m2f(note),t)}
     gv.gn.gain.setTargetAtTime(0.13,t,0.04);gv.note=note}
 }
+function bigPop(t,sub){const d=document.createElement('div');d.className='pop';d.textContent=t;const sm=document.createElement('small');sm.textContent=sub;d.appendChild(sm);document.body.appendChild(d);setTimeout(()=>d.remove(),2600);if(navigator.vibrate)try{navigator.vibrate(60)}catch(e){}}
+function fanfare(){if(!ctx)return;const t=ctx.currentTime;[0,4,7,12].forEach((x,i)=>{const o=ctx.createOscillator(),gn=ctx.createGain();o.type='triangle';o.frequency.value=m2f(72+x);o.connect(gn);gn.connect(ctx.destination);const s0=t+i*0.08;gn.gain.setValueAtTime(0,s0);gn.gain.linearRampToValueAtTime(0.12,s0+0.02);gn.gain.exponentialRampToValueAtTime(0.001,s0+0.5);o.start(s0);o.stop(s0+0.55)})}
 function ding(){if(!ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain(),t=ctx.currentTime;o.type='sine';o.frequency.setValueAtTime(1320,t);o.frequency.setValueAtTime(1760,t+0.07);o.connect(gn);gn.connect(ctx.destination);gn.gain.setValueAtTime(0.08,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.start(t);o.stop(t+0.26)}
 
 function newGame(){
   const base=+$('range').value;KEY=+$('key').value;let root=base+((KEY-base)%12+12)%12;if(root>base+5)root-=12;lo=root-2;hi=root+14;
-  const L=LV[+$('diff').value];S={L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap};
+  const L=LV[+$('diff').value];S={L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap,perf:Math.max(0.2,Math.min(0.5,L.gap*0.22)),perfects:0};
   SC=$('scale').value.split(',').map(Number);KEY=+$('key').value;S.order=$('order').value;S.idx=0;S.dir=1;
   S.notes=[];for(let m=lo+1;m<=hi-1;m++)if(inScale(m))S.notes.push(m);
   if(S.order==='up'){const t=S.notes.findIndex(m=>((m-KEY)%12+12)%12===0);S.run=S.notes.slice(Math.max(0,t),Math.max(0,t)+SC.length+1);if(S.run.length<3)S.run=S.notes.slice(0,SC.length+1)}
@@ -175,17 +187,20 @@ function step(dt){
     if($('fold').checked){const ref=ahead?ahead.note:(lo+hi)/2;m-=12*Math.round((m-ref)/12)}
     m=Math.max(lo,Math.min(hi,m));const ty=Y(m);S.y+=(ty-S.y)*Math.min(1,dt*14);S.vy=0;S.pitch=m;
   }else{S.pitch=null;S.vy=Math.min(S.vy+220*dt,140);S.y=Math.min(GROUND()-14,S.y+S.vy*dt)}
-  const px=S.dist+PX(),r=14;let inside=false;
+  const px=S.dist+PX(),r=14;let inside=false,perfNow=false;
   for(const o of S.obs){
     const sx=o.x-S.dist;
     if($('guide').value==='hint'&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
     const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=Y(o.note);
     if(px+r>o.x&&px-r<o.x+o.len){
       if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
-      else if(S.pitch!=null){inside=true}
+      else if(S.pitch!=null){inside=true;o.inF=(o.inF||0)+dt;const pf=Math.abs(S.pitch-o.note)<S.perf;if(pf){o.perfF=(o.perfF||0)+dt;perfNow=true}}
     }
-    if(!o.passed&&px-r>o.x+o.len){o.passed=true;if(!o.hit){S.gates++;S.score+=50+Math.round(o.len/S.speed*40);ding();burst(PX(),S.y)}}
+    if(!o.passed&&px-r>o.x+o.len){o.passed=true;if(!o.hit){S.gates++;S.score+=50+Math.round(o.len/S.speed*40);const need=o.len/S.speed;
+      if((o.perfF||0)>=Math.max(0.3,need*0.7)){S.perfects++;S.score+=200;fanfare();burst(PX(),S.y,'255,209,102',40);bigPop('Perfect gate!','+200 · '+S.perfects+(S.perfects>1?' perfect gates':' perfect gate'))}else{ding();burst(PX(),S.y)}}}
   }
+  if(perfNow){S.score+=dt*30;S.sparkT=(S.sparkT||0)-dt;if(S.sparkT<=0){S.sparkT=0.05;S.parts.push({x:PX()-10,y:S.y+(Math.random()-0.5)*16,vx:-120-Math.random()*60,vy:(Math.random()-0.5)*60,life:0.5,c:'255,209,102'})}}
+  S.perfNow=perfNow;
   if(inside){S.onSec+=dt;S.hold+=dt;S.holdBest=Math.max(S.holdBest,S.hold);S.score+=dt*30*(1+Math.min(4,Math.floor(S.hold/2)))}else S.hold=0;
   S.score+=dt*5;S.inv-=dt;S.shake=Math.max(0,S.shake-dt);
   S.obs=S.obs.filter(o=>o.x+o.len>S.dist-50);spawnUntil();
@@ -194,10 +209,10 @@ function step(dt){
   S.inside=inside;
   if($('guide').value==='hold'){const tgt=S.obs.find(o=>!o.passed&&o.x+o.len>px-r-2&&o.x-S.dist<PX()+S.speed*S.L.lead);guide(tgt?tgt.note:null)}else guide(null);
   if(ahead){$('tNote').textContent=sol(ahead.note);const tg=Math.max(0.5,S.gap*0.8);
-    const dd=S.pitch==null?null:S.pitch-ahead.note;$('tDir').textContent=dd==null?'sing now…':Math.abs(dd)<=tg?'✓ hold it!':dd<0?'▲ go higher':'▼ go lower';
-    $('tDir').style.color=dd==null?'#c9a9a6':Math.abs(dd)<=tg?'#34d6a6':dd<0?'#5cc3ff':'#ff8a4c'}
+    const dd=S.pitch==null?null:S.pitch-ahead.note;$('target').classList.toggle('perfect',dd!=null&&Math.abs(dd)<S.perf);$('tDir').textContent=dd==null?'sing now…':Math.abs(dd)<S.perf?'★ perfect!':Math.abs(dd)<=tg?'✓ hold it!':dd<0?'▲ go higher':'▼ go lower';
+    $('tDir').style.color=dd==null?'#c9a9a6':Math.abs(dd)<S.perf?'#ffd166':Math.abs(dd)<=tg?'#34d6a6':dd<0?'#5cc3ff':'#ff8a4c'}
 }
-function burst(x,y){for(let i=0;i<14;i++){const a=Math.random()*6.28,v=80+Math.random()*120;S.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-60,life:0.6+Math.random()*0.4})}}
+function burst(x,y,c='52,214,166',n=14){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=80+Math.random()*120;S.parts.push({x,y,vx:Math.cos(a)*v*(n>20?1.6:1),vy:Math.sin(a)*v-60,life:0.6+Math.random()*0.5,c})}}
 
 function draw(){
   g.setTransform(DPR,0,0,DPR,0,0);
@@ -222,17 +237,18 @@ function draw(){
     g.fillStyle=col;rr(x,TOP()-80,o.len,gy-gh-(TOP()-80),8);rr(x,gy+gh,o.len,GROUND()-(gy+gh),8);
     g.fillStyle='#ffffff22';g.fillRect(x+4,TOP()-80,4,gy-gh-(TOP()-80)-4);g.fillRect(x+4,gy+gh+4,4,GROUND()-gy-gh-8);
     g.fillStyle='#34d6a633';g.fillRect(x,gy-gh,o.len,gh*2);
-    g.strokeStyle='#34d6a666';g.setLineDash([6,6]);g.beginPath();g.moveTo(x,gy);g.lineTo(x+o.len,gy);g.stroke();g.setLineDash([]);
+    const lit=S.perfNow&&x<PX()&&x+o.len>PX();if(lit){g.fillStyle='#ffd16622';g.fillRect(x,gy-S.perf*lh,o.len,2*S.perf*lh)}
+    g.strokeStyle=lit?'#ffd166':'#34d6a666';g.lineWidth=lit?3:1;g.setLineDash(lit?[]:[6,6]);g.beginPath();g.moveTo(x,gy);g.lineTo(x+o.len,gy);g.stroke();g.setLineDash([]);g.lineWidth=1;
     g.fillStyle='#f6ead9';g.font='800 20px Rubik,sans-serif';g.textAlign='center';g.fillText(sol(o.note),x+Math.min(o.len/2,60),gy-gh-14);g.textAlign='start';
   }
   // trail
-  for(const p of S.parts){g.fillStyle=`rgba(52,214,166,${p.life})`;g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill()}
+  for(const p of S.parts){g.fillStyle=`rgba(${p.c||'52,214,166'},${Math.min(1,p.life*1.5)})`;g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill()}
   // bird
   const bx=PX(),by=S.y,flap=Math.sin(S.t*(S.pitch!=null?18:6));
   if(S.inv>0&&Math.floor(S.inv*10)%2)return;
   g.save();g.translate(bx,by);g.rotate(S.pitch==null?0.25:-0.08);
-  if(S.inside){g.shadowColor='#34d6a6';g.shadowBlur=24}
-  g.fillStyle='#34d6a6';g.beginPath();g.ellipse(0,0,17,14,0,0,7);g.fill();g.shadowBlur=0;
+  if(S.perfNow){g.shadowColor='#ffd166';g.shadowBlur=34}else if(S.inside){g.shadowColor='#34d6a6';g.shadowBlur=24}
+  g.fillStyle=S.perfNow?'#ffd166':'#34d6a6';g.beginPath();g.ellipse(0,0,17,14,0,0,7);g.fill();g.shadowBlur=0;
   g.fillStyle='#1f9c78';g.beginPath();g.ellipse(-4,2+flap*3,10,6+flap*3,-0.4,0,7);g.fill();
   g.fillStyle='#f6ead9';g.beginPath();g.ellipse(4,4,9,7,0,0,7);g.fill();
   g.fillStyle='#fff';g.beginPath();g.arc(7,-4,5,0,7);g.fill();g.fillStyle='#1b0a12';g.beginPath();g.arc(8.5,-4,2.4,0,7);g.fill();
@@ -250,7 +266,7 @@ function loop(ts){
 function end(){
   running=false;guide(null);$('hud').hidden=true;$('target').hidden=true;
   const sc=Math.round(S.score);try{best=+localStorage.getItem('pitchglider:best')||0;if(sc>best){localStorage.setItem('pitchglider:best',sc);best=sc;$('eBest').textContent='New high score!'}else $('eBest').textContent='High score: '+best.toLocaleString()}catch(e){$('eBest').textContent=' '}
-  $('eScore').textContent=sc.toLocaleString();$('eGates').textContent=S.gates;$('eSec').textContent=S.onSec.toFixed(1)+' s';$('eHold').textContent=S.holdBest.toFixed(1)+' s';$('eDist').textContent=Math.round(S.dist/100)+' m';
+  $('eScore').textContent=sc.toLocaleString();$('eGates').textContent=S.gates;$('ePerf').textContent=S.perfects;$('eSec').textContent=S.onSec.toFixed(1)+' s';$('eHold').textContent=S.holdBest.toFixed(1)+' s';$('eDist').textContent=Math.round(S.dist/100)+' m';
   $('end').hidden=false;
 }
 async function go(){
@@ -260,8 +276,15 @@ async function go(){
 }
 $('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('key').value,sc=$('scale').value.split(',').map(Number),b=+$('range').value;
   let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
+const SET=['range','diff','key','scale','order','guide'];
+try{const sv=JSON.parse(localStorage.getItem('pitchglider:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
+function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${t('diff')} · ${t('range')} · ${t('key').split(' ')[0]} ${t('scale').toLowerCase()} · ${t('order').toLowerCase()}`;
+  try{const sv={fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchglider:set',JSON.stringify(sv))}catch(e){}}
+for(const k of [...SET,'fold'])$(k).addEventListener('change',summary);summary();
+function showSettings(on){$('settings').hidden=!on;$('setBtn').setAttribute('aria-expanded',on);$('setBtn').textContent=on?'Hide settings':'Settings'}
+$('setBtn').onclick=()=>showSettings($('settings').hidden);
 $('goBtn').onclick=go;$('againBtn').onclick=go;
-$('menuBtn').onclick=()=>{$('end').hidden=true;$('start').hidden=false};
+$('menuBtn').onclick=()=>{$('end').hidden=true;$('start').hidden=false;showSettings(true)};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){running=false;guide(null);$('hud').hidden=true;$('target').hidden=true;$('start').hidden=false;$('goBtn').textContent='Start again'}});
 requestAnimationFrame(loop);
 }
