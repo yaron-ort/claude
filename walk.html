@@ -37,7 +37,7 @@ a{color:#5cc3ff}
 <body>
 <div class="card" id="home">
   <h1>Walk and Sing</h1>
-  <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down, and they come faster the farther off you are. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
+  <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
   <p style="font-size:14px;margin:6px 0">Bluetooth headphones: connect them after the mic is on.</p>
@@ -171,10 +171,12 @@ async function newRound(){
 }
 async function hint(d){
   busy=true;R.hints++;R.off=0;
-  const big=Math.abs(d)>1.5,up=d<0;
-  status(up?(big?'▲ Higher':'▲ A bit higher'):(big?'▼ Lower':'▼ A bit lower'));
-  if($('hints').value==='words')await speak(up?(big?'higher':'a bit higher'):(big?'lower':'a bit lower'));
-  else await wait(beeps(up?(big?[76,83]:[79,81]):(big?[83,76]:[81,79]),0.14,'square',0.12));
+  const a=Math.abs(d),up=d<0,sung=R.note+d,w=up?'higher':'lower',dirw=up?'up':'down';
+  if(a<1){status((up?'▲ ':'▼ ')+'Just a little '+w);if($('hints').value==='words')await speak('just a little '+w)}
+  else{const amt=a<1.75?'a half step':a<3?'one step':a<4.5?'two steps':'a big jump';
+    status(`${up?'▲':'▼'} You sing ${SOL[pc(sung)]}, go ${dirw} to ${SOL[pc(R.note)]} (${amt})`);
+    if($('hints').value==='words')await speak(`You're on ${SAY[pc(sung)]}. Go ${dirw} ${amt}, to ${SAY[pc(R.note)]}`)}
+  if($('hints').value!=='words')await wait(beeps(up?(a<1?[79,81]:a<3?[76,83]:[72,84]):(a<1?[81,79]:a<3?[83,76]:[84,72]),0.14,'square',0.12));
   if(R.hints%2===0&&+$('refLen').value>0){await wait(0.2);status('Listen again');voice(R.note,1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
   await wait(0.25);R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false;
 }
@@ -190,8 +192,8 @@ async function giveUp(){
   await wait(0.4);newRound();
 }
 let sm=[];
-function blip(up,t){ // go up = two HIGH beeps, go down = two LOW beeps
-  [up?1760:220,up?1760:220].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*0.11;o.type='triangle';o.frequency.value=f;
+function blip(up,t,n=2){ // go up = HIGH beeps, go down = LOW beeps; 1 beep = close, 2 = a step, 3 = far
+  Array(n).fill(up?1760:220).forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*0.11;o.type='triangle';o.frequency.value=f;
     o.connect(g);g.connect(master);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(0.22,s+0.008);g.gain.setValueAtTime(0.22,s+0.06);g.gain.exponentialRampToValueAtTime(0.001,s+0.09);o.start(s);o.stop(s+0.1)});
 }
 function chime(step,t){ // "you're there" note, climbing as you hold
@@ -210,7 +212,7 @@ function tick(buf,dt){
     if(Math.abs(d)<=tol){R.on+=dt;R.grace=0;R.off=Math.max(0,R.off-dt);bestHold=Math.max(bestHold,R.on);R.lastOn=true;
       if(live&&R.on>=R.nextChime&&R.on<hold){chime(Math.floor(R.on/0.5)-1,t);R.nextChime+=0.5;R.mute=t+0.14}}
     else{R.grace+=dt;R.lastOn=false;if(R.grace>0.6){R.on=0;R.nextChime=0.5}R.off+=dt;R.lastD=d;
-      if(live&&t>=R.nextBlip){const far=Math.min(1,Math.max(0,(Math.abs(d)-tol)/3));blip(d<0,t);R.nextBlip=t+1.0-0.6*far;R.mute=t+0.25}}
+      if(live&&t>=R.nextBlip){const far=Math.min(1,Math.max(0,(Math.abs(d)-tol)/3));const n=Math.abs(d)<1?1:Math.abs(d)<2.5?2:3;blip(d<0,t,n);R.nextBlip=t+0.8+0.11*n-0.5*far;R.mute=t+0.11*n+0.15}}
   }else{R.sil+=dt;R.lastOn=false;if(R.sil>0.6){R.on=0;R.nextChime=0.5}}
   if(R.on>=hold){win();return}
   if(R.off>(live?4:1.5)&&t-R.lastHint>(live?7:3.5)){hint(R.lastD);return}
@@ -221,8 +223,8 @@ function tick(buf,dt){
 async function keepAwake(){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(running&&document.visibilityState==='visible')keepAwake()});
 const demoCtx=()=>{if(!ctx){ctx=new AudioContext();}if(!master){master=ctx.createGain();master.gain.value=0.9;master.connect(ctx.destination)}ctx.resume()};
-$('demoUp').onclick=()=>{demoCtx();blip(true,now()+0.05);blip(true,now()+0.6)};
-$('demoDown').onclick=()=>{demoCtx();blip(false,now()+0.05);blip(false,now()+0.6)};
+$('demoUp').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(true,now()+0.05+i*0.9,n))};
+$('demoDown').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(false,now()+0.05+i*0.9,n))};
 $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5);setTimeout(()=>beeps([72,76,79,84],0.11,'triangle',0.3),2100)};
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 $('goBtn').onclick=async()=>{
