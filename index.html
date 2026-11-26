@@ -68,7 +68,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal</h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 3</span></h1>
   <p class="sub">Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
@@ -112,7 +112,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
     </select>
     <label class="chk">Song volume <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" style="width:120px;flex:none"></label>
   </div>
-  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small">With Bluetooth headphones, pick the phone's own mic so the music keeps playing.</span></div>
+  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small" id="micUsed"></span><span class="small">With Bluetooth headphones, pick the phone's own mic so the music keeps playing.</span></div>
   <div class="legend"><span><i style="background:#f6ead955"></i>Singer's melody</span><span><i style="background:var(--on)"></i>You, on pitch</span><span><i style="background:var(--hi)"></i>You, too high</span><span><i style="background:var(--lo)"></i>You, too low</span><span><i style="background:#8a7276"></i>You, while the singer is silent</span></div>
 
   <div class="panel" id="info" hidden></div>
@@ -364,6 +364,7 @@ $('micBtn').onclick=async()=>{
     if(!$('micSel').dataset.chosen&&BT.test(curLabel)){const alt=ins.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
       if(alt){mic.getTracks().forEach(t=>t.stop());mic=await navigator.mediaDevices.getUserMedia(cons(alt.deviceId))}}
     const used=mic.getAudioTracks()[0]?.getSettings?.().deviceId;if(used)$('micSel').value=used;
+    $('micRow').hidden=false;$('micUsed').textContent='Using: '+(mic.getAudioTracks()[0]?.label||'default mic')+'. ';
     ensureCtx();await ctx.resume();
     const s=ctx.createMediaStreamSource(mic);an=ctx.createAnalyser();an.fftSize=2048;s.connect(an);micBuf=new Float32Array(2048);
     $('micBtn').textContent='Mic is on';$('micBtn').classList.add('live');$('micWarn').hidden=true;
