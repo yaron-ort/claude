@@ -243,7 +243,7 @@ $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5)
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
 let E=null;
-const INFO={echo:'The phone sings a short tune. Sing it back, note by note: each right note gives a chime. Finish the tune to level up, and the next tune is one note longer. 3 lives, and a missed note costs one.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
+const INFO={echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
 const modeInfo=()=>{$('modeInfo').textContent=INFO[$('mode').value]};$('mode').addEventListener('change',modeInfo);modeInfo();
 function measure(buf){let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
   const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;if(!hz){sm=[];return null}sm.push(f2m(hz));if(sm.length>3)sm.shift();return [...sm].sort((a,b)=>a-b)[sm.length>>1]}
@@ -254,7 +254,7 @@ async function echoPlay(){
   busy=true;status('Listen…');eStats();
   for(const n of E.tune){if(!running||!E)return;voice(n,0.85,timb);await wait(0.95)}
   await wait(0.2);if(!running)return;beeps([96],0.06,'sine',0.12);await wait(0.3);
-  E.i=0;E.on=0;E.grace=0;E.t=now();E.nextBlip=0;E.mute=0;status(`Your turn: note 1 of ${E.tune.length}`);busy=false;
+  E.i=0;E.miss=0;E.close=0;newNoteState();E.nextBlip=0;E.mute=0;status(`Your turn: note 1 of ${E.tune.length}`);busy=false;
 }
 async function echoLevel(){
   busy=true;timb=$('timbre').value==='mix'?['aah','ooh'][E.level%2]:$('timbre').value;
@@ -276,17 +276,47 @@ async function echoOver(){
   const msg=`Game over. You reached level ${E.level} with ${E.score} points.`+(E.score>best?' New high score!':'');status(msg);
   if($('hints').value==='words')await speak(msg);stopGame(msg);
 }
+function newNoteState(){E.on=0;E.near=0;E.grace=0;E.voiced=0;E.ds=[];E.rec=[];E.t=now()}
+function nextNote(){E.i++;if(E.i>=E.tune.length){echoTuneDone();return true}newNoteState();E.mute=now()+0.2;status(`Your turn: note ${E.i+1} of ${E.tune.length}`);return false}
+function playRec(frames){ // play back the user's own singing
+  return new Promise(res=>{if(!frames.length){res();return}
+    const n=frames.reduce((a,f)=>a+f.length,0),ab=ctx.createBuffer(1,n,ctx.sampleRate),ch=ab.getChannelData(0);let o=0,pk=0;
+    for(const f of frames){ch.set(f,o);o+=f.length}for(let i=0;i<n;i++)pk=Math.max(pk,Math.abs(ch[i]));
+    const g=pk?0.6/pk:1,fade=Math.min(800,n>>2);for(let i=0;i<n;i++){let k=g;if(i<fade)k*=i/fade;if(i>n-fade)k*=(n-i)/fade;ch[i]*=k}
+    const s=ctx.createBufferSource();s.buffer=ab;s.connect(master);s.onended=()=>res();s.start();setTimeout(res,ab.duration*1000+400)});
+}
+async function wrongNote(d){ // let them hear the difference, then carry on
+  busy=true;E.miss++;const target=E.tune[E.i],frames=E.rec.slice(-Math.ceil(1.2*ctx.sampleRate/2048));
+  const w=$('hints').value==='words',up=d<0,a=Math.abs(d);
+  status(`${up?'▲ Too low':'▼ Too high'}: listen to you, then the target`);
+  await wait(beeps([60],0.15,'triangle',0.2));
+  if(w)await speak('You');await playRec(frames);await wait(0.25);
+  if(w)await speak('Target');voice(target,1.1,timb);await wait(1.3);
+  if(w)await speak(a<1.75?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower'));
+  await wait(0.3);if(!running||!E)return;
+  if(!nextNote()){beeps([96],0.06,'sine',0.12);await wait(0.3);E.t=now();busy=false}
+}
+async function echoTuneDone(){
+  busy=true;const len=E.tune.length;
+  if(E.miss===0){E.score+=20*len;E.level++;eStats();status(E.close?'Level up! (close enough)':'Level up!');
+    await wait(beeps([72,76,79,84,88],0.1,'triangle',0.3));if($('hints').value==='words')await speak(E.close?'Close enough. Level up!':['Great!','Level up!','Beautiful!','You got it!'][Math.floor(Math.random()*4)]);
+  }else if(E.miss<=len/2){E.score+=5*len;eStats();status('Almost! Same level, new tune');await wait(beeps([72,76,79],0.12,'triangle',0.2));if($('hints').value==='words')await speak('Almost. Try another one.')}
+  else{E.lives--;eStats();status('Missed too many');await wait(beeps([55,50],0.18,'triangle',0.25));if(E.lives<=0){echoOver();return}if($('hints').value==='words')await speak('Missed too many. Another try.')}
+  await wait(0.8);if(running&&E)echoLevel();
+}
 function echoTick(buf,dt){
-  if(busy||!E||!E.tune)return;const t=now(),tol=+$('tol').value,live=$('live').value==='on';
+  if(busy||!E||!E.tune)return;const t=now(),tol=+$('tol').value,near=Math.max(tol,1),live=$('live').value==='on';
   if(t<E.mute)return;
   const m=measure(buf),target=E.tune[E.i];
   if(m!=null){let d=m-target;if($('fold').checked)d-=12*Math.round(d/12);
-    if(Math.abs(d)<=tol){E.on+=dt;E.grace=0;
-      if(E.on>=0.45){chime(E.i,t);E.score+=10;E.i++;E.on=0;E.t=t;E.mute=t+0.2;eStats();
-        if(E.i>=E.tune.length){echoLevelUp();return}status(`Your turn: note ${E.i+1} of ${E.tune.length}`)}}
-    else{E.grace+=dt;if(E.grace>0.4)E.on=0;
-      if(live&&t>=E.nextBlip){const n=Math.abs(d)<1?1:Math.abs(d)<2.5?2:3;blip(d<0,t,n);E.nextBlip=t+0.7+0.11*n;E.mute=t+0.11*n+0.15}}
-  }else E.on=0;
+    E.voiced+=dt;E.ds.push(d);if(E.ds.length>40)E.ds.shift();E.rec.push(Float32Array.from(buf));if(E.rec.length>40)E.rec.shift();
+    if(Math.abs(d)<=tol){E.on+=dt;E.grace=0}else if(Math.abs(d)<=near){E.near+=dt;E.grace=0}else{E.grace+=dt;if(E.grace>0.4){E.on=0;E.near=0}}
+    if(E.on>=0.45){chime(E.i,t);E.score+=10;eStats();nextNote();return}                 // spot on
+    if(E.on+E.near>=0.6){chime(0,t);E.score+=5;E.close++;eStats();nextNote();return}  // close enough: keep going
+    const last=E.ds.slice(-14),med=[...last].sort((x,y)=>x-y)[last.length>>1],spread=Math.max(...last)-Math.min(...last);
+    if((E.voiced>0.9&&last.length>=12&&spread<0.8&&Math.abs(med)>near)||E.voiced>3){wrongNote(med);return}
+    if(live&&Math.abs(d)>tol&&t>=E.nextBlip){const n=Math.abs(d)<1?1:Math.abs(d)<2.5?2:3;blip(d<0,t,n);E.nextBlip=t+0.7+0.11*n;E.mute=t+0.11*n+0.15}
+  }else{E.on=0;E.near=0}
   if(t-E.t>7){echoMiss();return}
 }
 function stopGame(msg){
