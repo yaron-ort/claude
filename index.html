@@ -112,6 +112,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
     </select>
     <label class="chk">Song volume <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" style="width:120px;flex:none"></label>
   </div>
+  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small">With Bluetooth headphones, pick the phone's own mic so the music keeps playing.</span></div>
   <div class="legend"><span><i style="background:#f6ead955"></i>Singer's melody</span><span><i style="background:var(--on)"></i>You, on pitch</span><span><i style="background:var(--hi)"></i>You, too high</span><span><i style="background:var(--lo)"></i>You, too low</span><span><i style="background:#8a7276"></i>You, while the singer is silent</span></div>
 
   <div class="panel" id="info" hidden></div>
@@ -140,7 +141,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
     <ul>
       <li><b>Why not Spotify or YouTube directly?</b> Those apps protect their audio, so no web page is allowed to listen to it. Use a song file you own (MP3, M4A, WAV), for example from a purchased download.</li>
       <li><b>Best results:</b> a song with a clear lead voice and light backing. An a cappella or "vocals only" version works best of all. Busy rock or heavy bass makes the singer's line patchy.</li>
-      <li><b>Wear headphones.</b> Otherwise the mic hears the song too and gets confused.</li>
+      <li><b>Wear headphones.</b> Otherwise the mic hears the song too and gets confused. With Bluetooth headphones, sing into the phone's own mic: if the headset's mic is used, the phone switches to call mode and the music can stop. Pick the mic in the Microphone menu if needed. Wired headphones work best.</li>
       <li><b>Any octave counts</b> lets a low voice sing a high singer's song (or the other way round) one octave apart. Turn it off to practise the exact octave.</li>
       <li>Start with the practice exercises: their notes are perfectly clean, so feedback is exact.</li>
       <li>The singer's line ahead of the playhead shows what's coming, so you can prepare the next note.</li>
@@ -342,6 +343,7 @@ function applyRec(){
   if(!recRaw)return;const sh=+$('shift').value;user=[];
   recRaw.forEach((m,i)=>{if(!isNaN(m))user.push({t:i*HOP+sh,m})});recMode=true;recount();
 }
+$('micSel').onchange=async()=>{$('micSel').dataset.chosen='1';if(mic){const b=$('micBtn');b.click();await new Promise(r=>setTimeout(r,50));b.click()}};
 $('shift').oninput=e=>{$('shiftV').textContent=(+e.target.value).toFixed(2)+' s';applyRec()};
 
 // ---------- live microphone ----------
@@ -351,7 +353,17 @@ $('micBtn').onclick=async()=>{
   try{
     if(!window.isSecureContext&&location.protocol!=='file:')throw new Error('insecure');
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('none');
-    mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!ph,noiseSuppression:!ph,autoGainControl:false}});
+    const cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:!ph,noiseSuppression:!ph,autoGainControl:false}});
+    mic=await navigator.mediaDevices.getUserMedia(cons($('micSel').value||undefined));
+    // Bluetooth headsets switch into "phone call" mode when their mic is used, which cuts the music.
+    // So prefer the phone's own microphone and leave the headphones for listening.
+    const ins=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId);
+    $('micSel').innerHTML=ins.map(d=>`<option value="${d.deviceId.replace(/"/g,'')}">${(d.label||'Microphone').replace(/[<>&"']/g,'')}</option>`).join('');
+    $('micRow').hidden=ins.length<2;
+    const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,curLabel=mic.getAudioTracks()[0]?.label||'';
+    if(!$('micSel').dataset.chosen&&BT.test(curLabel)){const alt=ins.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
+      if(alt){mic.getTracks().forEach(t=>t.stop());mic=await navigator.mediaDevices.getUserMedia(cons(alt.deviceId))}}
+    const used=mic.getAudioTracks()[0]?.getSettings?.().deviceId;if(used)$('micSel').value=used;
     ensureCtx();await ctx.resume();
     const s=ctx.createMediaStreamSource(mic);an=ctx.createAnalyser();an.fftSize=2048;s.connect(an);micBuf=new Float32Array(2048);
     $('micBtn').textContent='Mic is on';$('micBtn').classList.add('live');$('micWarn').hidden=true;
