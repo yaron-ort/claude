@@ -36,7 +36,7 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 8</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 9</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
@@ -55,7 +55,7 @@ a{color:#5cc3ff}
       <select id="order" aria-label="Order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option></select>
     </div>
     <div class="row">
-      <select id="timbre" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="ohh">Sound: voice singing "oh"</option><option value="mix">Sound: voices, changing</option><option value="tone">Sound: soft tone</option></select>
+      <select id="timbre" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="ohh">Sound: voice singing "oh"</option><option value="mix">Sound: voices, changing</option><option value="mine">Sound: my own recorded voice</option><option value="tone">Sound: soft tone</option></select>
       <select id="refLen" aria-label="Note length"><option value="2">Phone sings 2 s</option><option value="4" selected>Phone sings 4 s</option><option value="8">Phone sings 8 s (long)</option><option value="0">Keep singing with me (headphones only)</option></select>
       <select id="hold" aria-label="Hold"><option value="1">Hold 1 s to win</option><option value="2" selected>Hold 2 s to win</option><option value="3">Hold 3 s to win</option><option value="5">Hold 5 s to win</option><option value="8">Hold 8 s to win</option><option value="12">Hold 12 s to win</option></select>
       <select id="tol" aria-label="Accuracy"><option value="0.7" selected>Easy (within 70 cents)</option><option value="0.45">Normal (within 45 cents)</option><option value="0.25">Hard (within 25 cents)</option></select>
@@ -65,6 +65,7 @@ a{color:#5cc3ff}
       <select id="hints" aria-label="Hints"><option value="words" selected>Hints: spoken words</option><option value="tones">Hints: up / down beeps</option></select>
     </div>
     <div class="row"><button id="demoUp" style="width:auto">Hear "go up"</button><button id="demoDown" style="width:auto">Hear "go down"</button><button id="demoOn" style="width:auto">Hear "on the note"</button><button id="demoVoice" style="width:auto">Hear the voice</button></div>
+    <div class="row"><button id="recMine">Record my own reference voice (3 s)</button></div><p id="mineState" style="font-size:14px;margin:0"></p><div></div>
     <label><input type="checkbox" id="sayName" checked> Say the note name before each note</label><br>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label>
   </div>
@@ -121,8 +122,8 @@ const VOX={ // [F1..F5],[B1..B5] for male / female
   ooh:{m:[[300,870,2240,3300,4000],[60,80,110,175,250]],f:[[370,950,2670,3700,4500],[70,90,130,200,250]]},
   ohh:{m:[[500,850,2450,3350,4000],[70,80,120,175,250]],f:[[560,920,2700,3700,4500],[80,90,130,200,250]]}
 };
-function singSamples(f0,dur,vowel,sr,seed=1){
-  const n=Math.floor(dur*sr),out=new Float32Array(n),fem=f0>210,V=VOX[vowel]||VOX.aah,[F,B]=fem?V.f:V.m;
+function singSamples(f0,dur,vowel,sr,seed=1,fem=f0>210){
+  const n=Math.floor(dur*sr),out=new Float32Array(n),V=VOX[vowel]||VOX.aah,[F,B]=fem?V.f:V.m;
   let rnd=seed*9301+49297;const rand=()=>{rnd=(rnd*9301+49297)%233280;return rnd/233280};
   const res=F.map((f,i)=>{const r=Math.exp(-Math.PI*B[i]/sr),c=-r*r,b=2*r*Math.cos(2*Math.PI*f/sr),a=1-b-c;return {a,b,c,y1:0,y2:0}});
   let ph=0,prevG=0,tilt=0,drift=0,driftT=0,vibPh=rand()*6.28,noiseLP=0;
@@ -131,7 +132,7 @@ function singSamples(f0,dur,vowel,sr,seed=1){
     const t=i/sr;
     if(i%256===0){driftT=(rand()-0.5)*0.06}drift+=(driftT-drift)*0.0005;          // slow wander, a few cents
     const vibDepth=0.12*Math.min(1,Math.max(0,(t-0.35)/0.6));                        // vibrato grows in gently (semitones)
-    const scoop=-0.35*Math.exp(-t/0.06);                                              // tiny scoop up into the note
+    const scoop=-0.2*Math.exp(-t/0.05);                                              // tiny scoop up into the note
     const semi=scoop+drift+vibDepth*Math.sin(vibPh);vibPh+=2*Math.PI*vibRate/sr;
     const f=f0*Math.pow(2,semi/12);ph+=f/sr;if(ph>=1)ph-=1;
     const Tp=0.42,Tn=0.18;let g=ph<Tp?0.5*(1-Math.cos(Math.PI*ph/Tp)):ph<Tp+Tn?Math.cos(Math.PI*(ph-Tp)/(2*Tn)):0; // Rosenberg glottal flow
@@ -145,6 +146,14 @@ function singSamples(f0,dur,vowel,sr,seed=1){
   let pk=0;for(const v of out)pk=Math.max(pk,Math.abs(v));if(pk)for(let i=0;i<n;i++)out[i]*=0.6/pk;
   return out;
 }
+// ---- the singer's own recorded "aah", re-tuned to every note ----
+let MINE=null;
+function loadMine(){try{const j=JSON.parse(localStorage.getItem('pitchwalk:mine')||'null');if(!j)return;const bin=atob(j.d),n=bin.length>>1,x=new Float32Array(n);
+  for(let i=0;i<n;i++){let v=bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8);if(v>32767)v-=65536;x[i]=v/32767}MINE={f:j.f,sr:j.sr,x}}catch(e){}}
+function saveMine(x,f,sr){try{let bin='';for(let i=0;i<x.length;i++){const v=Math.max(-32767,Math.min(32767,Math.round(x[i]*32767)))&65535;bin+=String.fromCharCode(v&255,v>>8)}localStorage.setItem('pitchwalk:mine',JSON.stringify({f,sr,d:btoa(bin)}))}catch(e){}}
+loadMine();
+function mineState(){$('mineState').textContent=MINE?`Saved: your voice at ${SOL[pc(f2m(MINE.f))]} (${MINE.f.toFixed(0)} Hz). Choose "Sound: my own recorded voice" to use it.`:'Sing a steady "aah" on any comfortable note. The app tunes it to every note it plays.'}
+mineState();
 const vcache=new Map();
 function voice(m,len,tb){ // a human-like sung vowel, or a soft tone; len 0 = keeps going until stopped
   const t=now(),f=m2f(m),out=ctx.createGain(),oscs=[];out.connect(master);
@@ -153,9 +162,16 @@ function voice(m,len,tb){ // a human-like sung vowel, or a soft tone; len 0 = ke
     const o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain();o.type='triangle';o.frequency.value=f;o2.frequency.value=2*f;g.gain.value=0.35;g2.gain.value=0.06;
     out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(1,t+0.15);
     o.connect(g);o2.connect(g2);g.connect(out);g2.connect(out);oscs.push(o,o2);o.start(t);o2.start(t);
+  }else if(tb==='mine'&&MINE){
+    const ab=ctx.createBuffer(1,MINE.x.length,MINE.sr);ab.getChannelData(0).set(MINE.x);
+    const src=ctx.createBufferSource();src.buffer=ab;src.playbackRate.value=f/MINE.f;src.loop=true;
+    const per=1/MINE.f,L=MINE.x.length/MINE.sr;src.loopStart=0.25;src.loopEnd=0.25+Math.floor((L-0.4)/per)*per;
+    src.connect(out);out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(1,t+0.08);src.start(t);oscs.push(src);
+    if(len){out.gain.setValueAtTime(1,t+len-0.2);out.gain.linearRampToValueAtTime(0,t+len);src.stop(t+len+0.05)}
   }else{
+    if(tb==='mine')tb='aah';
     const d=len||20,key=m+'|'+d+'|'+tb;let ab=vcache.get(key);
-    if(!ab){ab=ctx.createBuffer(1,Math.floor(d*ctx.sampleRate),ctx.sampleRate);ab.getChannelData(0).set(singSamples(f,d,tb,ctx.sampleRate,m));if(vcache.size>40)vcache.clear();vcache.set(key,ab)}
+    if(!ab){ab=ctx.createBuffer(1,Math.floor(d*ctx.sampleRate),ctx.sampleRate);ab.getChannelData(0).set(singSamples(f,d,tb,ctx.sampleRate,m,$('range').value==='57'));if(vcache.size>40)vcache.clear();vcache.set(key,ab)}
     const src=ctx.createBufferSource();src.buffer=ab;src.loop=!len;src.connect(out);src.start(t);oscs.push(src);
   }
   const stop=(at=now())=>{out.gain.cancelScheduledValues(at);out.gain.setValueAtTime(out.gain.value,at);out.gain.linearRampToValueAtTime(0,at+0.2);oscs.forEach(o=>{try{o.stop(at+0.25)}catch(e){}})};
@@ -216,7 +232,7 @@ async function hint(d){
     status(`${up?'▲':'▼'} You sing ${SOL[pc(sung)]}, go ${dirw} to ${SOL[pc(R.note)]} (${amt})`);
     if($('hints').value==='words')await speak(`You're on ${SAY[pc(sung)]}. Go ${dirw} ${amt}, to ${SAY[pc(R.note)]}`)}
   if($('hints').value!=='words')await wait(beeps(up?(a<1?[79,81]:a<3?[76,83]:[72,84]):(a<1?[81,79]:a<3?[83,76]:[84,72]),0.14,'square',0.12));
-  if(+$('refLen').value>0&&now()-R.lastRef>(often?9:0)&&(often||R.hints%2===0)){R.lastRef=now()+1.8;await wait(0.2);status('Listen again');voice(R.note,1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
+  if(+$('refLen').value>0){R.lastRef=now()+1.8;await wait(0.1);status('Target again');voice(R.note,often?1.0:1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
   await wait(0.25);R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false;
 }
 async function say(text,keepOn){ // short spoken feedback; hold progress keeps counting while it talks
@@ -273,6 +289,20 @@ const demoCtx=()=>{if(!ctx){ctx=new AudioContext();}if(!master){master=ctx.creat
 $('demoUp').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(true,now()+0.05+i*0.9,n))};
 $('demoDown').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(false,now()+0.05+i*0.9,n))};
 $('demoVoice').onclick=()=>{demoCtx();const b=+$('range').value+7,tb=$('timbre').value==='mix'?'aah':$('timbre').value;voice(b,2.5,tb)};
+$('recMine').onclick=async()=>{
+  await $('micOn').onclick();if(!mic)return;const b=$('recMine');b.disabled=true;b.textContent='Sing a steady "aah" now…';
+  const frames=[],old=proc.onaudioprocess;proc.onaudioprocess=e=>{frames.push(Float32Array.from(e.inputBuffer.getChannelData(0)))};
+  await wait(3.2);proc.onaudioprocess=old;b.disabled=false;b.textContent='Record my own reference voice (3 s)';
+  const sr=ctx.sampleRate,ms=frames.map(f=>{let r=0;for(let i=0;i<f.length;i+=4)r+=f[i]*f[i];r=Math.sqrt(r/(f.length/4));const hz=r>0.01?yin(f,sr,0.15):0;return hz?f2m(hz):null});
+  const v=ms.filter(x=>x!=null);if(v.length<15){$('mineState').textContent='I could not hear a steady note. Try again a bit louder.';return}
+  const med=[...v].sort((a,b)=>a-b)[v.length>>1];
+  let bs=-1,bl=0;for(let i=0;i<ms.length;){if(ms[i]!=null&&Math.abs(ms[i]-med)<0.35){let j=i;while(j<ms.length&&ms[j]!=null&&Math.abs(ms[j]-med)<0.35)j++;if(j-i>bl){bl=j-i;bs=i}i=j}else i++}
+  if(bl<20){$('mineState').textContent='The note was not steady enough. Hold one note for 3 seconds and try again.';return}
+  const seg=frames.slice(bs+1,bs+bl-1),n=seg.reduce((a,f)=>a+f.length,0),x=new Float32Array(n);let o=0,pk=0;for(const f of seg){x.set(f,o);o+=f.length}
+  for(const q of x)pk=Math.max(pk,Math.abs(q));for(let i=0;i<n;i++)x[i]*=0.6/pk;
+  MINE={f:m2f(med),sr,x};saveMine(x,MINE.f,sr);mineState();$('timbre').value='mine';save();
+  demoCtx();voice(+$('range').value+7,2,'mine');
+};
 $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5);setTimeout(()=>beeps([72,76,79,84],0.11,'triangle',0.3),2100)};
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
@@ -327,7 +357,7 @@ async function wrongNote(d){ // let them hear the difference, then carry on
   if(w)await speak('You');await playRec(frames);await wait(0.25);
   if(w)await speak('Target');voice(target,1.1,timb);await wait(1.3);
   if(w)await speak((up?'Too low. Sing ':'Too high. Sing ')+(a<1.75?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower')));
-  await wait(0.3);if(!running||!E)return;
+  status('Target again…');voice(target,1.2,timb);await wait(1.4);if(!running||!E)return;
   if(!nextNote()){beeps([96],0.06,'sine',0.12);await wait(0.3);E.t=now();busy=false}
 }
 async function echoTuneDone(){
@@ -376,7 +406,8 @@ async function compareLoop(){
       status('Target…');if(w())await speak('Target');voice(n,1.6,timb);await wait(1.9);
       if(Math.abs(med)<=tol){ok=true;C.good++;cStats();status('✓ Got it!');await wait(beeps([72,76,79,84],0.11,'triangle',0.3));if(w())await speak(['Good!','Yes, that\'s it!','Great!','Perfect!'][Math.floor(Math.random()*4)]);break}
       const a=Math.abs(med),up=med<0,tip=(up?'You were too low. Sing ':'You were too high. Sing ')+(a<1?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower'));
-      status(`${up?'▲':'▼'} ${tip}`);if(w())await speak(tr<3?tip+'. Try again.':tip+'. Next note.');else await wait(beeps(up?[79,84]:[84,79],0.15,'square',0.12));
+      status(`${up?'▲':'▼'} ${tip}`);if(w())await speak(tip+'.');else await wait(beeps(up?[79,84]:[84,79],0.15,'square',0.12));
+      if(tr<3){status('Target again…');voice(n,1.6,timb);await wait(1.9);if(w())await speak('Try again.')}else if(w())await speak('Next note.');
     }
     if(!ok&&!w())await wait(0.3);await wait(0.7);
   }
