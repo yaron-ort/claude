@@ -62,12 +62,12 @@ a{color:var(--lo)}
       <select id="scale" aria-label="Scale type"><option value="0,2,4,5,7,9,11">Major</option><option value="0,2,3,5,7,8,10">Minor</option><option value="0,2,4,7,9">Pentatonic major</option><option value="0,3,5,7,10">Pentatonic minor</option><option value="0,4,7">Major chord only (Do-Mi-Sol)</option><option value="0,1,2,3,4,5,6,7,8,9,10,11">All notes (chromatic)</option></select>
       <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option></select>
     </div>
-    <label><input type="checkbox" id="hint" checked> Play each gate's note before it arrives</label><br>
+    <div class="row"><select id="guide" aria-label="Guide note"><option value="hold" selected>Keep playing the note until I pass the gate</option><option value="hint">Play each note once, briefly</option><option value="off">No guide note</option></select></div>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label><br>
     <button id="listen" style="margin-top:6px">Listen to the scale</button>
     <button class="go" id="goBtn">Start singing</button>
     <p class="err" id="err" hidden></p>
-    <p style="font-size:14px">Bluetooth headphones on Android: connect them after you press Start. <a href="pitch-pal.html">Back to Pitch Pal</a></p>
+    <p style="font-size:14px">Use headphones: otherwise the mic hears the guide note too. Bluetooth headphones on Android: connect them after you press Start. <a href="pitch-pal.html">Back to Pitch Pal</a></p>
   </div>
 </div>
 
@@ -127,6 +127,16 @@ function tone(m,dur){
   o.type='triangle';o.frequency.value=m2f(m);o.connect(gn);gn.connect(ctx.destination);
   gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(0.18,t+0.03);gn.gain.setValueAtTime(0.18,t+dur-0.1);gn.gain.linearRampToValueAtTime(0,t+dur);o.start(t);o.stop(t+dur);
 }
+let gv=null;
+function guide(note){ // a soft, steady guide tone; note=null fades it out
+  if(!ctx)return;const t=ctx.currentTime;
+  if(!gv){const o=ctx.createOscillator(),o2=ctx.createOscillator(),gn=ctx.createGain(),g2=ctx.createGain();o.type='triangle';o2.type='sine';g2.gain.value=0.2;
+    o.connect(gn);o2.connect(g2);g2.connect(gn);gn.connect(ctx.destination);gn.gain.value=0;o.start();o2.start();gv={o,o2,gn,note:null}}
+  if(note==null){if(gv.note!=null)gv.gn.gain.setTargetAtTime(0,t,0.06);gv.note=null;return}
+  if(gv.note!==note){gv.o.frequency.setTargetAtTime(m2f(note),t,0.02);gv.o2.frequency.setTargetAtTime(2*m2f(note),t,0.02);
+    if(gv.note==null){gv.o.frequency.setValueAtTime(m2f(note),t);gv.o2.frequency.setValueAtTime(2*m2f(note),t)}
+    gv.gn.gain.setTargetAtTime(0.13,t,0.04);gv.note=note}
+}
 function ding(){if(!ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain(),t=ctx.currentTime;o.type='sine';o.frequency.setValueAtTime(1320,t);o.frequency.setValueAtTime(1760,t+0.07);o.connect(gn);gn.connect(ctx.destination);gn.gain.setValueAtTime(0.08,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.start(t);o.stop(t+0.26)}
 
 function newGame(){
@@ -168,7 +178,7 @@ function step(dt){
   const px=S.dist+PX(),r=14;let inside=false;
   for(const o of S.obs){
     const sx=o.x-S.dist;
-    if($('hint').checked&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
+    if($('guide').value==='hint'&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
     const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=Y(o.note);
     if(px+r>o.x&&px-r<o.x+o.len){
       if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
@@ -182,6 +192,7 @@ function step(dt){
   for(const p of S.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;p.life-=dt}S.parts=S.parts.filter(p=>p.life>0);
   $('hScore').textContent=Math.round(S.score).toLocaleString();$('hGates').textContent=S.gates;$('hLives').textContent='♥'.repeat(Math.max(0,S.lives))+'♡'.repeat(S.L.lives-Math.max(0,S.lives));
   S.inside=inside;
+  if($('guide').value==='hold'){const tgt=S.obs.find(o=>!o.passed&&o.x+o.len>px-r-2&&o.x-S.dist<PX()+S.speed*S.L.lead);guide(tgt?tgt.note:null)}else guide(null);
   if(ahead){$('tNote').textContent=sol(ahead.note);const tg=Math.max(0.5,S.gap*0.8);
     const dd=S.pitch==null?null:S.pitch-ahead.note;$('tDir').textContent=dd==null?'sing now…':Math.abs(dd)<=tg?'✓ hold it!':dd<0?'▲ go higher':'▼ go lower';
     $('tDir').style.color=dd==null?'#c9a9a6':Math.abs(dd)<=tg?'#34d6a6':dd<0?'#5cc3ff':'#ff8a4c'}
@@ -237,7 +248,7 @@ function loop(ts){
   draw();requestAnimationFrame(loop);
 }
 function end(){
-  running=false;$('hud').hidden=true;$('target').hidden=true;
+  running=false;guide(null);$('hud').hidden=true;$('target').hidden=true;
   const sc=Math.round(S.score);try{best=+localStorage.getItem('pitchglider:best')||0;if(sc>best){localStorage.setItem('pitchglider:best',sc);best=sc;$('eBest').textContent='New high score!'}else $('eBest').textContent='High score: '+best.toLocaleString()}catch(e){$('eBest').textContent=' '}
   $('eScore').textContent=sc.toLocaleString();$('eGates').textContent=S.gates;$('eSec').textContent=S.onSec.toFixed(1)+' s';$('eHold').textContent=S.holdBest.toFixed(1)+' s';$('eDist').textContent=Math.round(S.dist/100)+' m';
   $('end').hidden=false;
@@ -251,7 +262,7 @@ $('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('ke
   let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
 $('goBtn').onclick=go;$('againBtn').onclick=go;
 $('menuBtn').onclick=()=>{$('end').hidden=true;$('start').hidden=false};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){running=false;$('hud').hidden=true;$('target').hidden=true;$('start').hidden=false;$('goBtn').textContent='Start again'}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){running=false;guide(null);$('hud').hidden=true;$('target').hidden=true;$('start').hidden=false;$('goBtn').textContent='Start again'}});
 requestAnimationFrame(loop);
 }
 </script>
