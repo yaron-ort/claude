@@ -1,5 +1,6 @@
-# Pitch Pal
+# Pitch Glider and Pitch Pal
 
-Sing along with a song and see if you are on pitch, too high or too low.
+Singing games and pitch training.
 
-Open it: https://yaron-ort.github.io/claude/
+- Game: https://yaron-ort.github.io/claude/
+- Sing along with songs: https://yaron-ort.github.io/claude/pitch-pal.html

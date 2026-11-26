@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pitch Pal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: playful, encouraging, a coach at your side, never a lab.
+   IDEA: a karaoke stage at night: the singer's melody glows as a lane, your voice is a coloured trail.
+   PICTURE: the scrolling pitch stage itself, big, with the live "higher / lower" meter beside it.
+   COLOUR and TYPE: deep velvet-red stage ground in both themes, warm cream ink, teal = on pitch, coral = too high, sky = too low. Rubik.
+   LAYOUT: small title, stage + meter first, transport and settings below, score, then tips. Stacks on phones. */
+:root{color-scheme:dark;--bg:#1b0a12;--bg2:#2a1019;--lane:#33141f;--ink:#f6ead9;--mute:#c9a9a6;--on:#34d6a6;--hi:#ff8a4c;--lo:#5cc3ff;--ref:#f6ead9;--line:#4a2230}
+:root[data-theme=light],:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Rubik,system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(18px,3vw,40px) max(4vw,14px)}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:clamp(30px,4vw,44px);line-height:1.05;margin:0 0 4px;font-weight:800;text-wrap:balance}
+h2{font-size:22px;margin:0 0 10px}
+.sub{color:var(--mute);margin:0 0 18px;max-width:68ch}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:14px}
+.fig{position:relative;height:clamp(300px,48vh,480px);border-radius:18px;overflow:hidden;background:var(--bg2);box-shadow:0 20px 50px #0008,inset 0 1px 0 #ffffff14}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--mute);pointer-events:none}
+.hud{position:absolute;top:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:none;max-width:calc(100% - 90px)}
+.hud div{background:#1b0a12cc;border:1px solid var(--line);border-radius:10px;padding:4px 10px;text-align:center;line-height:1.15}
+.hud b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.hud span{font-size:12px;color:var(--mute)}
+.hud .pts b{color:var(--on);font-size:24px}.hud .mul b{color:var(--hi)}
+.pop{position:absolute;left:30%;top:40%;transform:translate(-50%,-50%);font-size:clamp(22px,4vw,34px);font-weight:800;color:var(--hi);text-shadow:0 2px 12px #000;pointer-events:none;animation:pop 1.3s ease-out forwards;white-space:nowrap}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-140%) scale(1)}}
+@media(prefers-reduced-motion:reduce){.pop{animation-duration:2s}}
+.empty b{display:block;color:var(--ink);font-size:20px;margin-bottom:4px}
+.meter{border-radius:18px;background:var(--bg2);padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;box-shadow:inset 0 1px 0 #ffffff14}
+.note{font-size:52px;font-weight:800;line-height:1}
+.status{font-size:20px;font-weight:700;min-height:2.6em;display:grid;place-items:center}
+.gauge{position:relative;width:34px;height:150px;border-radius:17px;background:linear-gradient(var(--hi),var(--bg) 42%,var(--bg) 58%,var(--lo));border:1px solid var(--line)}
+.gauge::after{content:"";position:absolute;left:-6px;right:-6px;top:calc(50% - 1px);height:2px;background:var(--on)}
+.needle{position:absolute;left:-10px;right:-10px;height:12px;border-radius:6px;background:var(--ink);top:calc(50% - 6px);transition:top .08s linear;box-shadow:0 0 12px #fff6}
+.small{font-size:13px;color:var(--mute)}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+button,.file,select{font:inherit;font-size:16px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--lane);color:var(--ink);padding:8px 16px;cursor:pointer}
+button:hover,.file:hover{border-color:var(--mute)}
+button:focus-visible,select:focus-visible,input:focus-visible,.file:focus-within{outline:3px solid var(--lo);outline-offset:2px}
+button.main{background:var(--on);color:#0c1f18;border-color:transparent;font-weight:700}
+button.mic.live{background:var(--hi);color:#2a0d00;border-color:transparent;font-weight:700}
+button:disabled{opacity:.45;cursor:not-allowed}
+.file{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.file input{position:absolute;opacity:0;width:1px;height:1px}
+.seek{flex:1 1 220px;display:flex;align-items:center;gap:8px}
+input[type=range]{flex:1;accent-color:var(--on);min-height:44px}
+.time{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--mute);font-size:14px}
+label.chk{display:inline-flex;gap:8px;align-items:center;min-height:44px;cursor:pointer}
+label.chk input{width:20px;height:20px;accent-color:var(--on)}
+.panel{margin-top:14px;border-radius:14px;padding:12px 16px;background:var(--lane)}
+.panel.warn{border:1px solid var(--hi)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(16px,3vw,36px)}
+.score{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.big{font-size:clamp(48px,7vw,72px);font-weight:800;line-height:1;color:var(--on)}
+.rows{flex:1 1 220px;display:grid;gap:8px}
+.row{display:grid;grid-template-columns:7em minmax(0,1fr) 3.2em;align-items:center;gap:8px;font-size:15px}
+.track{height:12px;border-radius:6px;background:var(--bg);overflow:hidden}
+.track i{display:block;height:100%;width:0;border-radius:6px;transition:width .3s}
+.row span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:14px;color:var(--mute)}
+.legend i{display:inline-block;width:22px;height:8px;border-radius:4px;margin-right:6px;vertical-align:middle}
+.prog{height:6px;border-radius:3px;background:var(--bg);overflow:hidden;margin-top:8px}.prog i{display:block;height:100%;width:0;background:var(--on)}
+[hidden]{display:none!important}
+@media(max-width:760px){.stage{grid-template-columns:minmax(0,1fr)}.meter{flex-direction:row;flex-wrap:wrap;justify-content:space-around}.gauge{width:150px;height:30px;background:linear-gradient(90deg,var(--lo),var(--bg) 42%,var(--bg) 58%,var(--hi))}.gauge::after{left:calc(50% - 1px);right:auto;width:2px;top:-6px;bottom:-6px;height:auto}.needle{top:-8px!important;bottom:-8px;height:auto;width:12px;left:calc(50% - 6px);right:auto;transition:left .08s linear}.grid{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){.needle,.track i{transition:none}}
+</style>
+</head>
+<body>
+<div class="band"><div class="wrap">
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 9</span></h1>
+  <p class="sub"><a href="./" style="color:var(--on);font-weight:700">Play Pitch Glider, the singing game</a><br>Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
+
+  <div class="stage">
+    <div class="fig" id="fig">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud" hidden>
+        <div class="pts"><b id="gPts">0</b><span>points</span></div>
+        <div class="mul"><b id="gMul">x1</b><span>combo</span></div>
+        <div><b id="gSec">0.0 s</b><span>on pitch</span></div>
+        <div><b id="gStreak">0.0 s</b><span>streak</span></div>
+        <div><b id="gLong">0.0 s</b><span>longest</span></div>
+      </div>
+      <div class="empty" id="empty"><div><b>Pick a song or an exercise to start</b>Use headphones so the microphone only hears you.</div></div>
+    </div>
+    <div class="meter" aria-live="polite">
+      <div class="small">You're singing</div>
+      <div class="note" id="note">–</div><div style="font-size:22px;font-weight:700;color:var(--mute);line-height:1" id="sol">&nbsp;</div>
+      <div class="gauge" aria-hidden="true"><div class="needle" id="needle"></div></div>
+      <div class="status" id="status">Press "Turn on mic" below</div>
+      <div class="small" id="cents">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <label class="file">Load a song file<input type="file" id="songFile" accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.flac,.webm"></label>
+    <select id="exSel" aria-label="Practice exercise">
+      <option value="">…or a practice exercise</option>
+    </select>
+    <select id="voiceSel" aria-label="Voice range">
+      <option value="48">Lower voice</option>
+      <option value="57">Middle voice</option>
+      <option value="60">Higher voice</option>
+    </select>
+    <button class="mic" id="micBtn">Turn on mic</button>
+  </div>
+  <div class="bar">
+    <button class="main" id="playBtn" disabled>Play</button>
+    <button id="restartBtn" disabled>Start over</button>
+    <div class="seek"><input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="Song position" disabled><span class="time" id="time">0:00 / 0:00</span></div>
+  </div>
+  <div class="bar">
+    <label class="chk"><input type="checkbox" id="fold" checked> Any octave counts</label>
+    <label class="chk"><input type="checkbox" id="loop"> Repeat automatically</label>
+    <label class="chk"><input type="checkbox" id="phones" checked> I'm wearing headphones</label>
+    <select id="tol" aria-label="Difficulty">
+      <option value="0.7">Easy (within 70 cents)</option>
+      <option value="0.5" selected>Normal (within half a semitone)</option>
+      <option value="0.3">Hard (within 30 cents)</option>
+    </select>
+    <label class="chk">Song volume <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" style="width:120px;flex:none"></label>
+  </div>
+  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small" id="micUsed"></span><span class="small">Bluetooth headphones silent? On Android, connect them after turning on the mic. Or choose the headphones' own mic here: the music then sounds like a phone call, but it plays.</span></div>
+  <div class="legend"><span><i style="background:#f6ead955"></i>Singer's melody</span><span><i style="background:var(--on)"></i>You, on pitch</span><span><i style="background:var(--hi)"></i>You, too high</span><span><i style="background:var(--lo)"></i>You, too low</span><span><i style="background:#8a7276"></i>You, while the singer is silent</span></div>
+
+  <div class="panel" id="info" hidden></div>
+  <div class="panel warn" id="micWarn" hidden></div>
+</div></div>
+
+<div class="band" style="background:var(--bg2)"><div class="wrap grid">
+  <section>
+    <h2 id="scoreTitle">Your score</h2>
+    <div class="score">
+      <div><div class="big" id="score">–</div><div class="small" id="best">&nbsp;</div></div>
+      <div class="rows">
+        <div class="row"><span>On pitch</span><div class="track"><i id="bOn" style="background:var(--on)"></i></div><span id="pOn">0%</span></div>
+        <div class="row"><span>Too high</span><div class="track"><i id="bHi" style="background:var(--hi)"></i></div><span id="pHi">0%</span></div>
+        <div class="row"><span>Too low</span><div class="track"><i id="bLo" style="background:var(--lo)"></i></div><span id="pLo">0%</span></div>
+      </div>
+    </div>
+    <p class="small" id="tip">Your score is the share of time you're on the singer's note while you both sing.</p>
+    <h2 style="margin-top:22px">No live mic here? Upload a recording</h2>
+    <p class="small">Some browsers block the microphone inside this page. Record yourself singing with any voice-memo app while the song plays, start both together, then load the recording here to see the same graph and score.</p>
+    <div class="bar"><label class="file">Load my recording<input type="file" id="recFile" accept="audio/*,video/*"></label>
+    <label class="chk">Shift <input type="range" id="shift" min="-3" max="3" step="0.05" value="0" style="width:120px;flex:none"> <span class="time" id="shiftV">0.00 s</span></label></div>
+  </section>
+  <section>
+    <h2>Good to know</h2>
+    <ul>
+      <li><b>Why not Spotify or YouTube directly?</b> Those apps protect their audio, so no web page is allowed to listen to it. Use a song file you own (MP3, M4A, WAV), for example from a purchased download.</li>
+      <li><b>Best results:</b> a song with a clear lead voice and light backing. An a cappella or "vocals only" version works best of all. Busy rock or heavy bass makes the singer's line patchy.</li>
+      <li><b>Wear headphones.</b> Otherwise the mic hears the song too and gets confused. With Bluetooth headphones, sing into the phone's own mic: if the headset's mic is used, the phone switches to call mode and the music can stop. Pick the mic in the Microphone menu if needed. Wired headphones work best.</li>
+      <li><b>Any octave counts</b> lets a low voice sing a high singer's song (or the other way round) one octave apart. Turn it off to practise the exact octave.</li>
+      <li>Start with the practice exercises: their notes are perfectly clean, so feedback is exact.</li>
+      <li>The singer's line ahead of the playhead shows what's coming, so you can prepare the next note.</li>
+    </ul>
+  </section>
+</div></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const SOL=['Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#','La','La#','Si'];
+const solName=m=>SOL[((Math.round(m)%12)+12)%12];
+const f2m=f=>69+12*Math.log2(f/440);
+const mName=m=>NN[((Math.round(m)%12)+12)%12]+(Math.floor(Math.round(m)/12)-1);
+const fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
+const HOP=0.02;let HPF=+(new URLSearchParams(location.search).get('hpf')||150);window.__pp={ref:()=>ref};
+
+// ---------- YIN pitch detector ----------
+function yin(buf,sr,thr,fmin=65,fmax=1100,n=buf.length){
+  const W=n>>1,tmin=Math.max(2,Math.floor(sr/fmax)),tmax=Math.min(W-1,Math.floor(sr/fmin));
+  const d=new Float32Array(tmax+2);
+  for(let tau=1;tau<=tmax+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
+  let run=0;d[0]=1;
+  for(let tau=1;tau<=tmax+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
+  let tau=-1;
+  for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0)return 0;
+  const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;
+  const t2=den?tau+0.5*(a-c)/den:tau;
+  return sr/t2;
+}
+const rmsOf=(b,n)=>{let s=0;for(let i=0;i<n;i++)s+=b[i]*b[i];return Math.sqrt(s/n)};
+
+// offline pitch track of a whole buffer, resampled to 16 kHz and band-limited to the voice range
+async function track(buffer,thr,onProg){
+  const SR=16000,len=Math.ceil(buffer.duration*SR);
+  const oc=new OfflineAudioContext(1,len,SR);
+  const s=oc.createBufferSource();s.buffer=buffer;
+  const hp=oc.createBiquadFilter();hp.type='highpass';hp.frequency.value=HPF;
+  const lp=oc.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1400;
+  s.connect(hp);hp.connect(lp);lp.connect(oc.destination);s.start();
+  const x=(await oc.startRendering()).getChannelData(0);
+  const N=1024,hop=SR*HOP,frames=Math.max(0,Math.floor((x.length-N)/hop));
+  let peak=0;for(let i=0;i<x.length;i+=50)peak=Math.max(peak,Math.abs(x[i]));
+  const out=new Float32Array(frames).fill(NaN);
+  for(let f=0;f<frames;f++){
+    const w=x.subarray(f*hop,f*hop+N);
+    if(rmsOf(w,N)>peak*0.03){const hz=yin(w,SR,thr,65,1100,N);if(hz)out[f]=f2m(hz)}
+    if(f%250===0){onProg&&onProg(f/frames);await new Promise(r=>setTimeout(r,0))}
+  }
+  return clean(out);
+}
+function clean(a){
+  const n=a.length,m=new Float32Array(n).fill(NaN);
+  for(let i=0;i<n;i++){ // median of voiced neighbours fixes octave jumps and spikes
+    if(isNaN(a[i]))continue;const w=[];
+    for(let j=i-3;j<=i+3;j++)if(j>=0&&j<n&&!isNaN(a[j]))w.push(a[j]);
+    if(w.length<3)continue;w.sort((p,q)=>p-q);const med=w[w.length>>1];
+    m[i]=Math.abs(a[i]-med)>1?med:a[i];
+  }
+  for(let i=0;i<n;){ // drop blips shorter than 120 ms
+    if(isNaN(m[i])){i++;continue}let j=i;while(j<n&&!isNaN(m[j])&&Math.abs(m[j]-m[i])<3)j++;
+    if(j-i<6)for(let k=i;k<j;k++)m[k]=NaN;i=Math.max(j,i+1);
+  }
+  return m;
+}
+
+// ---------- exercises (clean synthesized notes) ----------
+// s = seconds per note, r = rest after each note (s), legato = one unbroken voice, [semi, sec, glideTo]
+const EX=[
+  {g:'Warm-ups and scales',n:'Warm-up: 1-2-3-2-1',p:[0,2,4,2,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Five-note scale',p:[0,2,4,5,7,5,4,2,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Full major scale',p:[0,2,4,5,7,9,11,12,11,9,7,5,4,2,0],s:0.45},
+  {g:'Warm-ups and scales',n:'Arpeggio jumps',p:[0,4,7,12,7,4,0],s:0.6},
+  {g:'Warm-ups and scales',n:'Interval leaps',p:[0,7,0,5,0,4,0,12,0],s:0.75},
+  {g:'Long notes',n:'Very long notes up and down (8 s)',p:[0,2,4,5,7,5,4,2,0],s:8,r:1.2},
+  {g:'Long notes',n:'Hold one note (15 s)',p:[0],s:15,r:1.8},
+  {g:'Long notes',n:'Growing holds: 4, 6, 8, 10, 12 s',seq:[[0,4],[0,6],[0,8],[0,10],[0,12]],r:1.5},
+  {g:'Long notes',n:'Long notes going down (8 s)',p:[7,5,4,2,0],s:8,r:1.2},
+  {g:'Long notes',n:'Long chord tones Do-Mi-Sol-Do (6 s)',p:[0,4,7,12,7,4,0],s:6,r:1.2},
+  {g:'Long notes',n:'Long leaps (6 s)',p:[0,7,0,5,0,12,0],s:6,r:1.2},
+  {g:'Long notes',n:'Slide and hold (no breaks)',legato:true,seq:[[0,4],[0,1.2,2],[2,4],[2,1.2,4],[4,4],[4,1.2,7],[7,5],[7,2,0],[0,5]],r:2},
+  {g:'Long notes',n:'Breath marathon: 6 notes x 10 s, no rests',legato:true,seq:[[0,10],[4,10],[7,10],[5,10],[2,10],[0,10]],r:2},
+  {g:'Long notes',n:'Surprise holds (random notes, 5-9 s)',rand:true,r:1.2}
+];
+{const groups=[...new Set(EX.map(e=>e.g))];
+ $('exSel').insertAdjacentHTML('beforeend',groups.map(g=>`<optgroup label="${g}">`+EX.map((e,i)=>e.g===g?`<option value="${i}">${e.n}</option>`:'').join('')+'</optgroup>').join(''));}
+function seqOf(e){
+  if(e.rand){const pool=[0,2,4,5,7,9,12],out=[];let last=-1;for(let k=0;k<6;k++){let x;do{x=pool[Math.floor(Math.random()*pool.length)]}while(x===last);last=x;out.push([x,5+Math.round(Math.random()*4)])}return out}
+  return e.seq||e.p.map(x=>[x,e.s]);
+}
+async function buildExercise(i,base){
+  const e=EX[i],voices=[];let t=1.5;
+  for(const up of (e.rand?[0]:[0,2,4])){
+    const sq=seqOf(e);
+    if(e.legato){const v={t,segs:[]};for(const [m,d,to] of sq){v.segs.push({m:base+up+m,d,to:to==null?null:base+up+to});t+=d}voices.push(v);t+=e.r||1}
+    else for(const [m,d] of sq){voices.push({t,segs:[{m:base+up+m,d,to:null}]});t+=d+(e.r||0)}
+    t+=1.2;
+  }
+  const dur=t+0.5,SR=44100,oc=new OfflineAudioContext(1,Math.ceil(dur*SR),SR),hz=m=>440*2**((m-69)/12);
+  const ref=new Float32Array(Math.ceil(dur/HOP)).fill(NaN);
+  for(const v of voices){
+    const D=v.segs.reduce((a,x)=>a+x.d,0),o=oc.createOscillator(),o2=oc.createOscillator(),g=oc.createGain(),g2=oc.createGain();
+    o.type='triangle';o2.type='sine';g2.gain.value=0.15;o2.connect(g2);g2.connect(g);o.connect(g);g.connect(oc.destination);
+    let st=v.t;
+    for(const sg of v.segs){
+      const f=hz(sg.m);o.frequency.setValueAtTime(f,st);o2.frequency.setValueAtTime(2*f,st);
+      if(sg.to!=null){o.frequency.exponentialRampToValueAtTime(hz(sg.to),st+sg.d);o2.frequency.exponentialRampToValueAtTime(2*hz(sg.to),st+sg.d)}
+      const k0=Math.ceil((st+(st===v.t?0.02:0))/HOP),k1=(st+sg.d-(st+sg.d>=v.t+D-1e-6?0.03:0))/HOP;
+      for(let k=k0;k<k1;k++){const fr=(k*HOP-st)/sg.d;ref[k]=sg.to==null?sg.m:sg.m+(sg.to-sg.m)*Math.max(0,Math.min(1,fr))}
+      st+=sg.d;
+    }
+    g.gain.setValueAtTime(0,v.t);g.gain.linearRampToValueAtTime(0.35,v.t+0.03);
+    g.gain.setValueAtTime(0.35,v.t+D-0.08);g.gain.linearRampToValueAtTime(0,v.t+D-0.01);
+    o.start(v.t);o2.start(v.t);o.stop(v.t+D);o2.stop(v.t+D);
+  }
+  const buf=await oc.startRendering();
+  return {buf,ref};
+}
+
+// ---------- state ----------
+let ctx=null,songBuf=null,ref=null,src=null,songGain=null,startAt=0,offset=0,playing=false,title='';
+let lo=48,hi=72,user=[],recMode=false,recRaw=null,stats={on:0,hi:0,lo:0},cur=null;
+let mic=null,an=null,micBuf=null,smooth=[];
+const ensureCtx=()=>{if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();songGain=ctx.createGain();songGain.gain.value=+$('vol').value;songGain.connect(ctx.destination)}return ctx};
+const player=new Audio();player.preload='auto';player.volume=+$('vol').value;
+const now=()=>playing?player.currentTime:offset;
+function wavBlob(b){const x=b.getChannelData(0),n=x.length,sr=b.sampleRate,v=new DataView(new ArrayBuffer(44+n*2)),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32000,true);return new Blob([v],{type:'audio/wav'})}
+const dur=()=>songBuf?songBuf.duration:0;
+const tolV=()=>+$('tol').value;
+const refAt=t=>{const i=Math.round(t/HOP);return ref&&i>=0&&i<ref.length?ref[i]:NaN};
+const info=(h,show=true)=>{$('info').innerHTML=h;$('info').hidden=!show};
+
+function setRange(){
+  const v=[...ref].filter(x=>!isNaN(x)).sort((a,b)=>a-b);
+  if(!v.length){lo=48;hi=72;return}
+  const p=q=>v[Math.floor(q*(v.length-1))];
+  lo=Math.floor(p(0.03))-3;hi=Math.ceil(p(0.97))+3;
+  if(hi-lo<14){const c=(hi+lo)/2;lo=Math.floor(c-7);hi=lo+14}
+}
+function loaded(buf,r,name,blob){
+  stop();if(player.src)URL.revokeObjectURL(player.src);player.src=URL.createObjectURL(blob||wavBlob(buf));songBuf=buf;ref=r;title=name;offset=0;resetTake();setRange();
+  ['playBtn','restartBtn','seek'].forEach(id=>$(id).disabled=false);$('hud').hidden=false;
+  $('seek').max=buf.duration;$('empty').hidden=true;$('scoreTitle').textContent='Your score: '+name;
+  showBest();
+}
+
+// classify a sung pitch against the singer, forgiving a little timing slack
+function judge(t,u){
+  let best=null;
+  for(let dt=-0.15;dt<=0.15001;dt+=HOP){const r=refAt(t+dt);if(isNaN(r))continue;
+    let d=u-r;if($('fold').checked)d-=12*Math.round(d/12);
+    if(!best||Math.abs(d)<Math.abs(best.d))best={d,r}}
+  if(!best)return {c:'none',d:0,shown:u};
+  const c=Math.abs(best.d)<=tolV()?'on':best.d>0?'hi':'lo';
+  return {c,d:best.d,shown:best.r+best.d};
+}
+function recount(){
+  stats={on:0,hi:0,lo:0};
+  for(const p of user){const j=judge(p.t,p.m);p.j=j;if(j.c!=='none')stats[j.c]++}
+  showStats();
+}
+function showStats(){
+  const n=stats.on+stats.hi+stats.lo,pc=k=>n?Math.round(100*stats[k]/n):0;
+  $('score').textContent=n>10?pc('on')+'%':'–';
+  for(const [k,b,p] of [['on','bOn','pOn'],['hi','bHi','pHi'],['lo','bLo','pLo']]){$(b).style.width=pc(k)+'%';$(p).textContent=pc(k)+'%'}
+  if(n>30){$('tip').textContent=stats.hi>stats.lo*1.5?'You tend to sing a little sharp (high). Relax and aim slightly lower.':stats.lo>stats.hi*1.5?'You tend to sing a little flat (low). Lift the note with more breath support.':'Your misses are balanced between high and low. Keep listening closely to each note.'}
+}
+let game={pts:0,sec:0,streak:0,long:0,miss:0,lastT:null,next:3};
+const MILES=[3,5,10,15,20,30,45,60];
+function resetGame(){game={pts:0,sec:0,streak:0,long:0,miss:0,lastT:null,next:3};showGame()}
+const mult=()=>Math.min(5,1+Math.floor(game.streak/3));
+function showGame(){$('gPts').textContent=Math.round(game.pts).toLocaleString();$('gMul').textContent='x'+mult();
+  $('gSec').textContent=game.sec.toFixed(1)+' s';$('gStreak').textContent=game.streak.toFixed(1)+' s';$('gLong').textContent=game.long.toFixed(1)+' s'}
+function pop(txt){const d=document.createElement('div');d.className='pop';d.textContent=txt;$('fig').appendChild(d);setTimeout(()=>d.remove(),2100)}
+function scoreFrame(t){ // called every frame while playing with live mic
+  const dt=game.lastT==null?0:Math.max(0,Math.min(0.1,t-game.lastT));game.lastT=t;if(!dt)return;
+  const singer=!isNaN(refAt(t-0.06));
+  if(cur&&cur.j.c==='on'){
+    game.miss=0;game.sec+=dt;game.streak+=dt;game.long=Math.max(game.long,game.streak);
+    const perfect=Math.abs(cur.j.d)<0.15;game.pts+=dt*100*mult()*(perfect?1.5:1);
+    if(game.streak>=game.next){pop(game.next+' s streak!'+(mult()>1?'  x'+mult():''));game.next=MILES.find(m=>m>game.streak)||game.next+30}
+  }else if(singer){game.miss+=dt;if(game.miss>0.3){game.streak=0;game.next=3}}
+  showGame();
+}
+function resetTake(){user=[];resetGame();stats={on:0,hi:0,lo:0};showStats();recMode=false;recRaw=null;$('tip').textContent='Your score is the share of time you\'re on the singer\'s note while you both sing.'}
+const bestKey=()=>'pitchpal:'+title+':'+$('tol').value;
+function showBest(){let b=null,p=null;try{b=localStorage.getItem(bestKey());p=localStorage.getItem(bestKey()+':pts')}catch(e){}
+  $('best').textContent=b||p?'Best: '+(b?b+'%':'')+(p?(b?', ':'')+(+p).toLocaleString()+' points':''):' '}
+function saveBest(){
+  const n=stats.on+stats.hi+stats.lo;if(n<50)return;const s=Math.round(100*stats.on/n),P=Math.round(game.pts);
+  let msg=`Finished! <b>${P.toLocaleString()} points</b>, <b>${game.sec.toFixed(1)} s</b> on pitch, longest streak <b>${game.long.toFixed(1)} s</b>, ${s}% accuracy.`;
+  try{const k=bestKey()+':pts',b=+localStorage.getItem(k)||0;if(P>b){localStorage.setItem(k,P);if(P>0)msg+=' <b>New high score!</b>'}
+    if(s>(+localStorage.getItem(bestKey())||0))localStorage.setItem(bestKey(),s)}catch(e){}
+  info(msg);showBest();
+}
+
+// ---------- transport ----------
+async function play(){
+  if(!songBuf||playing)return;
+  if(offset>=dur()-0.1)offset=0;
+  player.currentTime=offset;playing=true;$('playBtn').textContent='Pause';
+  try{await player.play()}catch(e){playing=false;$('playBtn').textContent='Play';info('The phone did not let the song start. Tap Play again.');return}
+  if(ctx)ctx.resume();
+}
+function stop(){game.lastT=null;if(playing)offset=now();player.pause();playing=false;$('playBtn').textContent='Play'}
+player.onended=()=>{if(playing){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest();
+  if($('loop').checked&&!recMode)setTimeout(()=>{if(!playing&&offset>=dur()-0.1){const msg=$('info').innerHTML;resetTake();offset=0;play();info(msg+' Starting again…')}},2000)}};
+function seek(t){const was=playing;stop();offset=Math.max(0,Math.min(t,dur()));if(!recMode){user=user.filter(p=>p.t<offset);recount()}if(was)play()}
+$('playBtn').onclick=()=>playing?stop():play();
+$('restartBtn').onclick=()=>{const keep=recMode;stop();offset=0;if(!keep)resetTake();info('',false);play()};
+$('seek').oninput=e=>seek(+e.target.value);
+$('vol').oninput=e=>{player.volume=+e.target.value};
+$('fold').onchange=$('tol').onchange=()=>{recount();showBest()};
+
+$('songFile').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;ensureCtx();$('exSel').value='';
+  info(`Listening for the singer in <b>${f.name.replace(/[<>&"']/g,'')}</b>… <div class="prog"><i id="pg"></i></div>`);
+  try{
+    const buf=await ctx.decodeAudioData(await f.arrayBuffer());
+    const r=await track(buf,0.25,p=>{const g=$('pg');if(g)g.style.width=(p*100)+'%'});
+    const voiced=r.filter(x=>!isNaN(x)).length/r.length;
+    loaded(buf,r,f.name.replace(/\.[^.]+$/,''),f);
+    info(voiced<0.15?`I could only find a clear singing voice in ${Math.round(voiced*100)}% of this song. The backing music may be too busy: try a vocals-only or acoustic version for better feedback.`:`Ready. I found the singer's voice in about ${Math.round(voiced*100)}% of the song. Press Play and sing along.`);
+  }catch(err){info('Sorry, this file could not be read as audio. Try an MP3, M4A or WAV file.')}
+  e.target.value='';
+};
+async function loadEx(){
+  const i=$('exSel').value;if(i==='')return;ensureCtx();
+  const {buf,ref:r}=await buildExercise(+i,+$('voiceSel').value);
+  loaded(buf,r,EX[i].n+' ('+$('voiceSel').selectedOptions[0].text.toLowerCase()+')');
+  info(EX[i].g==='Long notes'?'Long notes: breathe low, then hold each note steady to build a big streak. The pattern repeats a step higher each time.':'Exercise ready. Listen to each note and match it. The pattern repeats, moving up a step each time.');
+};
+$('exSel').onchange=loadEx;$('voiceSel').onchange=()=>{if($('exSel').value!=='')loadEx()};
+
+// ---------- recording upload (fallback for no live mic) ----------
+$('recFile').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(!ref){info('Load the song (or exercise) first, then your recording.');e.target.value='';return}
+  ensureCtx();info('Reading your recording… <div class="prog"><i id="pg"></i></div>');
+  try{
+    const buf=await ctx.decodeAudioData(await f.arrayBuffer());
+    recRaw=await track(buf,0.18,p=>{const g=$('pg');if(g)g.style.width=(p*100)+'%'});
+    applyRec();stop();offset=0;
+    info('Your recording is on the stage. Press Play to watch it against the singer. If the lines look shifted in time, nudge the Shift slider.');
+  }catch(err){info('Sorry, this recording could not be read. Try another format.')}
+  e.target.value='';
+};
+function applyRec(){
+  if(!recRaw)return;const sh=+$('shift').value;user=[];
+  recRaw.forEach((m,i)=>{if(!isNaN(m))user.push({t:i*HOP+sh,m})});recMode=true;recount();
+}
+$('micSel').onchange=async()=>{$('micSel').dataset.chosen='1';if(mic){const b=$('micBtn');b.click();await new Promise(r=>setTimeout(r,50));b.click()}};
+$('shift').oninput=e=>{$('shiftV').textContent=(+e.target.value).toFixed(2)+' s';applyRec()};
+
+// ---------- live microphone ----------
+$('micBtn').onclick=async()=>{
+  if(mic){mic.getTracks().forEach(t=>t.stop());mic=null;an=null;$('micBtn').textContent='Turn on mic';$('micBtn').classList.remove('live');$('status').textContent='Press "Turn on mic" below';return}
+  const ph=$('phones').checked;$('status').textContent='Asking for the microphone…';
+  try{
+    if(!window.isSecureContext&&location.protocol!=='file:')throw new Error('insecure');
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('none');
+    const cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:!ph,noiseSuppression:!ph,autoGainControl:false}});
+    const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i;
+    let first=$('micSel').value||undefined;
+    if(!first){ // mic allowed before: pick the phone's own mic straight away, without touching the headset mic
+      const pre=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.label&&d.deviceId);
+      const own=pre.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
+      if(pre.some(d=>BT.test(d.label))&&own)first=own.deviceId}
+    mic=await navigator.mediaDevices.getUserMedia(cons(first));
+    // Bluetooth headsets switch into "phone call" mode when their mic is used, which cuts the music.
+    // So prefer the phone's own microphone and leave the headphones for listening.
+    const ins=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId);
+    $('micSel').innerHTML=ins.map(d=>`<option value="${d.deviceId.replace(/"/g,'')}">${(d.label||'Microphone').replace(/[<>&"']/g,'')}</option>`).join('');
+    $('micRow').hidden=ins.length<2;
+    const curLabel=mic.getAudioTracks()[0]?.label||'';
+    if(!$('micSel').dataset.chosen&&BT.test(curLabel)){const alt=ins.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
+      if(alt){mic.getTracks().forEach(t=>t.stop());mic=await navigator.mediaDevices.getUserMedia(cons(alt.deviceId))}}
+    const used=mic.getAudioTracks()[0]?.getSettings?.().deviceId;if(used)$('micSel').value=used;
+    $('micRow').hidden=false;$('micUsed').textContent='Using: '+(mic.getAudioTracks()[0]?.label||'default mic')+'. ';
+    ensureCtx();await ctx.resume();
+    const s=ctx.createMediaStreamSource(mic);an=ctx.createAnalyser();an.fftSize=2048;s.connect(an);micBuf=new Float32Array(2048);
+    $('micBtn').textContent='Mic is on';$('micBtn').classList.add('live');$('micWarn').hidden=true;
+    if(recMode)resetTake();
+  }catch(err){
+    if(mic){mic.getTracks().forEach(t=>t.stop())}mic=null;$('micWarn').hidden=false;$('status').textContent='Mic blocked';
+    const why=err&&err.name==='NotAllowedError'?' (the browser said: permission denied)':err&&err.name==='NotFoundError'?' (no microphone was found on this device)':'';
+    $('micWarn').innerHTML='<b>The microphone is blocked here'+why+'.</b> If you opened Pitch Pal inside Claude, the page isn\'t allowed to use your mic. Download the Pitch Pal file from the chat and open it in Chrome, Edge or Safari, then allow the microphone when asked. If you already said no once, click the lock or settings icon left of the address bar, set Microphone to Allow, and reload. Or use "Load my recording" below.';
+  }
+};
+
+// ---------- drawing ----------
+const cv=$('cv'),g=cv.getContext('2d');let W=0,H=0,DPR=1;
+const size=()=>{DPR=window.devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR};
+const ro=new ResizeObserver(size);ro.observe(cv);
+const COL={on:'#34d6a6',hi:'#ff8a4c',lo:'#5cc3ff',none:'#8a7276'};
+function frame(){
+  const t=now();
+  // live pitch
+  if(an){
+    an.getFloatTimeDomainData(micBuf);
+    let hz=rmsOf(micBuf,micBuf.length)>0.008?yin(micBuf,ctx.sampleRate,0.15,65,1100):0;
+    if(hz){smooth.push(f2m(hz));if(smooth.length>3)smooth.shift();const m=[...smooth].sort((a,b)=>a-b)[smooth.length>>1];
+      const j=judge(t-0.06,m);cur={m,j};
+      if(playing&&!recMode){user.push({t:t-0.06,m,j});scoreFrame(t);if(j.c!=='none')stats[j.c]++;if(user.length%15===0)showStats()}
+    }else{smooth=[];cur=null;if(playing&&!recMode)scoreFrame(t)}
+  }else if(recMode&&ref){const p=user.find(p=>Math.abs(p.t-t)<HOP);cur=p?{m:p.m,j:p.j}:null}
+  meter();
+  if(songBuf){$('seek').value=t;$('time').textContent=fmt(t)+' / '+fmt(dur())}
+  draw(t);requestAnimationFrame(frame);
+}
+function meter(){
+  if(!cur){$('note').textContent='–';$('sol').innerHTML='&nbsp;';$('needle').style[innerWidth<=760?'left':'top']='';
+    if(an||recMode)$('status').textContent=an?'Sing!':'';$('cents').innerHTML='&nbsp;';$('status').style.color='';return}
+  $('note').textContent=mName(cur.m);$('sol').textContent=solName(cur.m);const j=cur.j;
+  const st=j.c==='on'?['On pitch!',COL.on]:j.c==='hi'?['Too high, come down',COL.hi]:j.c==='lo'?['Too low, go up',COL.lo]:[ref?'Singer is resting':'Free singing',COL.none];
+  $('status').textContent=st[0];$('status').style.color=st[1];
+  $('cents').textContent=j.c==='none'?' ':(j.d>0?'+':'')+Math.round(j.d*100)+' cents';
+  const k=Math.max(-1,Math.min(1,j.d/2)); // ±2 semitones full scale
+  if(innerWidth<=760){$('needle').style.top='';$('needle').style.left=`calc(${50+k*45}% - 6px)`}
+  else{$('needle').style.left='';$('needle').style.top=`calc(${50-k*45}% - 6px)`}
+}
+function draw(t){
+  g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,W,H);
+  const pps=Math.max(90,Math.min(170,W/5)),px=W*0.3,lab=34,lh=H/(hi-lo);
+  const Y=m=>H-(m-lo+0.5)*lh,X=tt=>px+(tt-t)*pps,t0=t-px/pps,t1=t+(W-px)/pps;
+  // note lanes
+  for(let m=lo;m<hi;m++){const pc=((m%12)+12)%12,black=[1,3,6,8,10].includes(pc);
+    g.fillStyle=black?'#230d16':'#2e1119';g.fillRect(0,Y(m)-lh/2,W,lh);
+    if(pc===0){g.fillStyle='#4a2230';g.fillRect(0,Y(m)+lh/2-1,W,1)}
+    if(!black&&(lh>13||pc===0)){g.fillStyle=pc===0?'#f6ead9':'#c9a9a6';g.font=`${pc===0?600:400} 12px Rubik,sans-serif`;g.textBaseline='middle';g.fillText(mName(m)+'  '+solName(m),8,Y(m))}}
+  if(!ref)return;
+  // singer's melody
+  const i0=Math.max(0,Math.floor(t0/HOP)),i1=Math.min(ref.length-1,Math.ceil(t1/HOP));
+  g.lineCap='round';g.lineJoin='round';g.lineWidth=Math.max(6,Math.min(18,lh*0.75));
+  for(let pass=0;pass<2;pass++){
+    g.strokeStyle=pass?'#f6ead966':'#f6ead92a';g.beginPath();let on=false;
+    for(let i=i0;i<=i1;i++){const r=ref[i],ti=i*HOP;
+      if(isNaN(r)||(pass===0&&ti>t)||(pass===1&&ti<t)){on=false;continue}
+      const x=X(ti),y=Y(r);if(on&&Math.abs(r-ref[i-1])<1.5)g.lineTo(x,y);else{g.moveTo(x,y);g.lineTo(x+0.1,y)}on=true}
+    g.stroke()}
+  // your voice
+  g.lineWidth=4;let prev=null;
+  for(const p of user){if(p.t<t0-0.2||p.t>t1)continue;if(!recMode&&p.t>t)break;
+    let m=p.j.c==='none'&&$('fold').checked?fitRange(p.m):p.j.shown;const x=X(p.t),y=Y(m);
+    if(prev&&p.t-prev.t<0.12&&Math.abs(y-prev.y)<lh*2){g.strokeStyle=COL[p.j.c];g.beginPath();g.moveTo(prev.x,prev.y);g.lineTo(x,y);g.stroke()}
+    prev={x,y,t:p.t}}
+  // playhead + live dot
+  g.fillStyle='#f6ead9';g.fillRect(px-1,0,2,H);
+  if(cur){const m=cur.j.c==='none'&&$('fold').checked?fitRange(cur.m):cur.j.shown,y=Y(m);
+    g.fillStyle=COL[cur.j.c];g.shadowColor=COL[cur.j.c];g.shadowBlur=18;g.beginPath();g.arc(px,y,9,0,7);g.fill();g.shadowBlur=0}
+}
+const fitRange=m=>{while(m<lo)m+=12;while(m>hi)m-=12;return m};
+size();requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
