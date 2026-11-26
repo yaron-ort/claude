@@ -36,9 +36,9 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 9</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 10</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
-  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
+  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="simon">Simon: the tune grows one note at a time</option><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
@@ -112,7 +112,7 @@ async function startMic(){
   const src=ctx.createMediaStreamSource(mic);
   proc=ctx.createScriptProcessor(2048,1,1);const sink=ctx.createGain();sink.gain.value=0;
   src.connect(proc);proc.connect(sink);sink.connect(ctx.destination);
-  proc.onaudioprocess=e=>{if(running)(C?compareTick:E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
+  proc.onaudioprocess=e=>{if(running&&Sg&&Sg.rec)simonTick(e.inputBuffer.getChannelData(0));else if(running)(C?compareTick:E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
 }
 const now=()=>ctx.currentTime;
 const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
@@ -307,7 +307,7 @@ $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5)
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
 let E=null;
-const INFO={compare:'The phone sings a note. You sing it for about 3 seconds. Then you hear your own voice, then the target, and whether you got it. If not, you get another try: up to 3 tries, then the next note.',echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
+const INFO={simon:'Like Simon: the phone sings 1 note, you sing it back with soft ticks keeping the beat. Then you hear yourself, the target, and a short tip. Get it right and one note is added, and the whole tune plays again. 3 tries per round.',compare:'The phone sings a note. You sing it for about 3 seconds. Then you hear your own voice, then the target, and whether you got it. If not, you get another try: up to 3 tries, then the next note.',echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
 const modeInfo=()=>{$('modeInfo').textContent=INFO[$('mode').value]};$('mode').addEventListener('change',modeInfo);modeInfo();
 function measure(buf){let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
   const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;if(!hz){sm=[];return null}sm.push(f2m(hz));if(sm.length>3)sm.shift();return [...sm].sort((a,b)=>a-b)[sm.length>>1]}
@@ -393,7 +393,7 @@ const cStats=()=>{$('stats').textContent=`${C.good} of ${C.total} notes right`};
 async function compareLoop(){
   const w=()=>$('hints').value==='words',tol=+$('tol').value;
   while(running&&C){
-    const n=pickNote();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ohh','ooh'][C.total%3]:$('timbre').value;
+    const n=(()=>{const pool=notes.filter(m=>m!==prevNote);const x=pool[Math.floor(Math.random()*pool.length)];prevNote=x;return x})();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ohh','ooh'][C.total%3]:$('timbre').value;
     status('Listen: '+SOL[pc(n)]);if($('sayName').checked)await speak(SAY[pc(n)]);if(!running||!C)return;
     voice(n,2,timb);await wait(2.3);let ok=false;
     for(let tr=1;tr<=3;tr++){
@@ -412,9 +412,42 @@ async function compareLoop(){
     if(!ok&&!w())await wait(0.3);await wait(0.7);
   }
 }
+// ---------- Simon ----------
+let Sg=null;const SLOT=1.3;
+function simonTick(buf){const m=measure(buf);Sg.frames.push(Float32Array.from(buf));Sg.ms.push({t:now(),m})}
+const sStats=()=>{$('stats').textContent=`Tune length ${Sg.seq.length} · best ${Sg.best} · try ${Sg.tryN} of 3`};
+function simonAdd(){const q=Sg.seq;if(!q.length){q.push(notes[Math.floor(Math.random()*notes.length)]);return}
+  const pool=notes.filter(m=>m!==q[q.length-1]);q.push(pool[Math.floor(Math.random()*pool.length)])}
+async function playSeq(){for(const n of Sg.seq){if(!running||!Sg)return;voice(n,0.95,timb);await wait(SLOT)}}
+async function simonLoop(){
+  const w=()=>$('hints').value==='words',tol=Math.max(+$('tol').value,0.8);
+  while(running&&Sg){
+    sStats();status(`Listen: ${Sg.seq.length} note${Sg.seq.length>1?'s':''}`);await playSeq();if(!running||!Sg)return;
+    status('Your turn: sing with the ticks');await wait(0.4);
+    Sg.frames=[];Sg.ms=[];const t0=now()+0.35;Sg.rec=true;
+    for(let k=0;k<Sg.seq.length;k++){const tt=t0+k*SLOT,o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=2200;o.connect(g);g.connect(master);g.gain.setValueAtTime(0.06,tt);g.gain.exponentialRampToValueAtTime(0.001,tt+0.03);o.start(tt);o.stop(tt+0.04)}
+    await wait(0.35+Sg.seq.length*SLOT+0.15);Sg.rec=false;if(!running||!Sg)return;
+    // judge each beat
+    const res=Sg.seq.map((n,k)=>{const a=t0+k*SLOT+0.3,b=t0+(k+1)*SLOT-0.1,ds=Sg.ms.filter(x=>x.t>=a&&x.t<=b&&x.m!=null).map(x=>{let d=x.m-n;if($('fold').checked)d-=12*Math.round(d/12);return d});
+      if(ds.length<4)return null;return ds.sort((p,q)=>p-q)[ds.length>>1]});
+    const good=res.filter(d=>d!=null&&Math.abs(d)<=tol).length,all=good===res.length;
+    status('You…');if(w())await speak('You');await playRec(Sg.frames);await wait(0.2);
+    status('Target…');if(w())await speak('Target');await playSeq();await wait(0.2);
+    let tip;const bad=res.findIndex(d=>d==null||Math.abs(d)>tol);
+    if(all)tip=Sg.seq.length===1?'Right!':`All ${res.length} right!`;
+    else{const d=res[bad],pos=res.length>1?`Note ${bad+1}`:'It';tip=d==null?`${pos}: I did not hear you.`:`${pos} was too ${d<0?'low':'high'}.`;if(res.length>1)tip=`${good} of ${res.length} right. `+tip}
+    status((all?'✓ ':'')+tip);
+    if(all){await wait(beeps([72,76,79,84],0.1,'triangle',0.28));if(w())await speak(tip+' Plus one note.');Sg.best=Math.max(Sg.best,Sg.seq.length);simonAdd();Sg.tryN=1}
+    else{if(w())await speak(tip);Sg.tryN++;
+      if(Sg.tryN>3){const msg=`Game over. Your longest tune was ${Sg.best} note${Sg.best===1?'':'s'}.`;let hb=0;try{hb=+localStorage.getItem('pitchwalk:simonBest')||0;if(Sg.best>hb)localStorage.setItem('pitchwalk:simonBest',Sg.best)}catch(e){}
+        status(msg);if(w())await speak(msg+(Sg.best>hb?' New record!':''));stopGame(msg+(Sg.best>hb?' New record!':''));return}
+      if(w())await speak('Try again.')}
+    await wait(0.6);
+  }
+}
 function stopGame(msg){
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
-  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;C=null;
+  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;C=null;Sg=null;
 }
 $('recTest').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;const b=$('recTest');b.disabled=true;b.textContent='Recording… sing now';
@@ -424,6 +457,9 @@ $('recTest').onclick=async()=>{
 };
 $('goBtn').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;
+  if($('mode').value==='simon'){buildNotes();E=null;C=null;Sg={seq:[],best:0,tryN:1,rec:false,frames:[],ms:[]};simonAdd();timb=$('timbre').value==='mix'?'aah':$('timbre').value;
+    $('home').hidden=true;$('run').hidden=false;running=true;keepAwake();if($('hints').value==='words')await speak('Simon. Listen, then sing it back.');simonLoop();return}
+  Sg=null;
   if($('mode').value==='compare'){buildNotes();E=null;prevNote=null;C={good:0,total:0,rec:false,frames:[],ds:[]};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
     if($('hints').value==='words')await speak('Listen and compare.');compareLoop();return}
   C=null;
@@ -436,6 +472,7 @@ $('goBtn').onclick=async()=>{
 };
 $('stop').onclick=()=>{
   if(E){stopGame(`Last game: level ${E.level}, ${E.score} points.`);return}
+  if(Sg){stopGame(`Last game: longest tune ${Sg.best} note${Sg.best===1?'':'s'}.`);return}
   if(C){stopGame(`Last walk: ${C.good} of ${C.total} notes right.`);return}
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
   $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;
