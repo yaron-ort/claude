@@ -54,8 +54,14 @@ a{color:var(--lo)}
       <select id="range" aria-label="Voice range"><option value="45">Lower voice</option><option value="52">Middle voice</option><option value="57">Higher voice</option></select>
       <select id="diff" aria-label="Difficulty"><option value="1.4">Easy</option><option value="1" selected>Normal</option><option value="0.65">Hard</option></select>
     </div>
+    <div class="row">
+      <select id="key" aria-label="Scale key"><option value="0">Do (C)</option><option value="2">Re (D)</option><option value="4">Mi (E)</option><option value="5">Fa (F)</option><option value="7">Sol (G)</option><option value="9">La (A)</option><option value="11">Si (B)</option><option value="1">Do# (C#)</option><option value="3">Re# (D#)</option><option value="6">Fa# (F#)</option><option value="8">Sol# (G#)</option><option value="10">La# (A#)</option></select>
+      <select id="scale" aria-label="Scale type"><option value="0,2,4,5,7,9,11">Major</option><option value="0,2,3,5,7,8,10">Minor</option><option value="0,2,4,7,9">Pentatonic major</option><option value="0,3,5,7,10">Pentatonic minor</option><option value="0,4,7">Major chord only (Do-Mi-Sol)</option><option value="0,1,2,3,4,5,6,7,8,9,10,11">All notes (chromatic)</option></select>
+      <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option></select>
+    </div>
     <label><input type="checkbox" id="hint" checked> Play each gate's note before it arrives</label><br>
-    <label><input type="checkbox" id="fold" checked> Any octave counts</label>
+    <label><input type="checkbox" id="fold" checked> Any octave counts</label><br>
+    <button id="listen" style="margin-top:6px">Listen to the scale</button>
     <button class="go" id="goBtn">Start singing</button>
     <p class="err" id="err" hidden></p>
     <p style="font-size:14px">Bluetooth headphones on Android: connect them after you press Start. <a href="./">Back to Pitch Pal</a></p>
@@ -99,7 +105,8 @@ let ctx=null,an=null,buf=null,mic=null,sm=[];
 let lo=45,hi=60,S=null,running=false,last=0,best=0;
 const TOP=()=>70,GROUND=()=>H-34;
 const Y=m=>GROUND()-(m-lo)/(hi-lo)*(GROUND()-TOP());
-const MAJ=[0,2,4,5,7,9,11];
+let SC=[0,2,4,5,7,9,11],KEY=0;
+const inScale=m=>SC.includes((((m-KEY)%12)+12)%12);
 
 async function startMic(){
   if(mic)return;
@@ -118,16 +125,21 @@ function tone(m,dur){
 function ding(){if(!ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain(),t=ctx.currentTime;o.type='sine';o.frequency.setValueAtTime(1320,t);o.frequency.setValueAtTime(1760,t+0.07);o.connect(gn);gn.connect(ctx.destination);gn.gain.setValueAtTime(0.08,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.start(t);o.stop(t+0.26)}
 
 function newGame(){
-  const base=+$('range').value;lo=base-1;hi=base+15;
+  const base=+$('range').value;KEY=+$('key').value;let root=base+((KEY-base)%12+12)%12;if(root>base+5)root-=12;lo=root-2;hi=root+14;
   S={t:0,dist:0,speed:170,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+170*3.5,lives:3,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:+$('diff').value};
-  S.notes=[];for(let m=lo+1;m<=hi-1;m++)if(MAJ.includes(((m%12)+12)%12))S.notes.push(m);
+  SC=$('scale').value.split(',').map(Number);KEY=+$('key').value;S.order=$('order').value;S.idx=0;S.dir=1;
+  S.notes=[];for(let m=lo+1;m<=hi-1;m++)if(inScale(m))S.notes.push(m);
+  if(S.order==='up'){const t=S.notes.findIndex(m=>((m-KEY)%12+12)%12===0);S.run=S.notes.slice(Math.max(0,t),Math.max(0,t)+SC.length+1);if(S.run.length<3)S.run=S.notes.slice(0,SC.length+1)}
   spawnUntil();
 }
 function spawnUntil(){
   while(S.nextX<S.dist+W*1.6){
     const k=S.gates+S.obs.length,maxLen=Math.min(4,1+k*0.15);
     const secs=Math.random()<0.35?0.5:0.6+Math.random()*(maxLen-0.6); // short gates and long tunnels
-    const pool=k<4?S.notes.slice(2,S.notes.length-2):S.notes;let note;do{note=pool[Math.floor(Math.random()*pool.length)]}while(S.obs.length&&note===S.obs[S.obs.length-1].note&&pool.length>1);
+    let note;const prev=S.obs.length?S.obs[S.obs.length-1].note:null;
+    if(S.order==='up'){note=S.run[S.idx];if(S.idx+S.dir<0||S.idx+S.dir>=S.run.length)S.dir*=-1;S.idx+=S.dir}
+    else{const pool=S.order==='near'&&prev!=null?S.notes.filter(m=>Math.abs(m-prev)<=4&&m!==prev):S.notes;
+      do{note=pool[Math.floor(Math.random()*pool.length)]}while(note===prev&&pool.length>1)}
     const len=secs*S.speed;
     S.obs.push({x:S.nextX,len,note,hinted:false,passed:false,hit:false});
     S.nextX+=len+S.speed*(1.5+Math.random()*0.8);
@@ -179,8 +191,8 @@ function draw(){
   g.fillStyle='#3a1522';g.beginPath();g.moveTo(0,H);for(let x=0;x<=W+40;x+=40)g.lineTo(x,GROUND()-60-40*Math.sin((x+d*0.2)/130)-20*Math.sin((x+d*0.2)/47));g.lineTo(W,H);g.fill();
   // note lanes
   const lh=(GROUND()-TOP())/(hi-lo);g.font='12px Rubik,sans-serif';g.textBaseline='middle';
-  for(let m=lo;m<=hi;m++){const pc=((m%12)+12)%12;if([1,3,6,8,10].includes(pc))continue;
-    g.fillStyle=pc===0?'#f6ead922':'#f6ead90d';g.fillRect(0,Y(m),W,1);g.fillStyle=pc===0?'#f6ead9':'#c9a9a6aa';g.fillText(sol(m),6,Y(m)-7)}
+  for(let m=lo;m<=hi;m++){if(!inScale(m))continue;const tonic=(((m-KEY)%12)+12)%12===0;
+    g.fillStyle=tonic?'#f6ead926':'#f6ead90d';g.fillRect(0,Y(m),W,1);g.fillStyle=tonic?'#f6ead9':'#c9a9a6aa';g.font=(tonic?'700 ':'')+'12px Rubik,sans-serif';g.fillText(sol(m),6,Y(m)-7)}
   // ground
   g.fillStyle='#4a1d2b';g.fillRect(-20,GROUND(),W+40,H);g.fillStyle='#5e2636';for(let x=-((d)%30);x<W;x+=30)g.fillRect(x,GROUND(),14,3);
   if(!S)return;
@@ -227,6 +239,8 @@ async function go(){
   try{await startMic()}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.';return}
   newGame();$('start').hidden=true;$('end').hidden=true;$('hud').hidden=false;running=true;
 }
+$('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('key').value,sc=$('scale').value.split(',').map(Number),b=+$('range').value;
+  let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
 $('goBtn').onclick=go;$('againBtn').onclick=go;
 $('menuBtn').onclick=()=>{$('end').hidden=true;$('start').hidden=false};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){running=false;$('hud').hidden=true;$('start').hidden=false;$('goBtn').textContent='Start again'}});
