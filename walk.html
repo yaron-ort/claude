@@ -38,6 +38,8 @@ a{color:#5cc3ff}
 <div class="card" id="home">
   <h1>Walk and Sing</h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
+  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="notes">Note practice: hold one long note at a time</option></select>
+  <p id="modeInfo" style="font-size:14px"></p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
   <p style="font-size:14px;margin:6px 0">Bluetooth headphones: connect them after the mic is on.</p>
@@ -89,7 +91,7 @@ function yin(b,sr,thr){
 }
 
 // ---------- settings ----------
-const SET=['range','key','scale','order','timbre','refLen','hold','tol','limit','hints','live','talk'];
+const SET=['mode','range','key','scale','order','timbre','refLen','hold','tol','limit','hints','live','talk'];
 try{const sv=JSON.parse(localStorage.getItem('pitchwalk:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sayName!=null)$('sayName').checked=sv.sayName;if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
 const save=()=>{try{const sv={sayName:$('sayName').checked,fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchwalk:set',JSON.stringify(sv))}catch(e){}};
 for(const k of [...SET,'sayName','fold'])$(k).addEventListener('change',save);
@@ -108,7 +110,7 @@ async function startMic(){
   const src=ctx.createMediaStreamSource(mic);
   proc=ctx.createScriptProcessor(2048,1,1);const sink=ctx.createGain();sink.gain.value=0;
   src.connect(proc);proc.connect(sink);sink.connect(ctx.destination);
-  proc.onaudioprocess=e=>{if(running)tick(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
+  proc.onaudioprocess=e=>{if(running)(E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
 }
 const now=()=>ctx.currentTime;
 const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
@@ -239,14 +241,69 @@ $('demoUp').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(true,now()+0.05+i
 $('demoDown').onclick=()=>{demoCtx();[1,2,3].forEach((n,i)=>blip(false,now()+0.05+i*0.9,n))};
 $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5);setTimeout(()=>beeps([72,76,79,84],0.11,'triangle',0.3),2100)};
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
+// ---------- Echo challenge ----------
+let E=null;
+const INFO={echo:'The phone sings a short tune. Sing it back, note by note: each right note gives a chime. Finish the tune to level up, and the next tune is one note longer. 3 lives, and a missed note costs one.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
+const modeInfo=()=>{$('modeInfo').textContent=INFO[$('mode').value]};$('mode').addEventListener('change',modeInfo);modeInfo();
+function measure(buf){let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
+  const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;if(!hz){sm=[];return null}sm.push(f2m(hz));if(sm.length>3)sm.shift();return [...sm].sort((a,b)=>a-b)[sm.length>>1]}
+function echoTune(len){const t=[];let i=Math.floor(Math.random()*notes.length);
+  for(let k=0;k<len;k++){t.push(notes[i]);let j,tries=0;do{j=i+Math.floor(Math.random()*5)-2;tries++}while((j<0||j>=notes.length||j===i)&&tries<30);if(j>=0&&j<notes.length)i=j}return t}
+const eStats=()=>{$('stats').textContent=`Level ${E.level} · ${'♥'.repeat(E.lives)}${'♡'.repeat(3-E.lives)} · ${E.score} points`};
+async function echoPlay(){
+  busy=true;status('Listen…');eStats();
+  for(const n of E.tune){if(!running||!E)return;voice(n,0.85,timb);await wait(0.95)}
+  await wait(0.2);if(!running)return;beeps([96],0.06,'sine',0.12);await wait(0.3);
+  E.i=0;E.on=0;E.grace=0;E.t=now();E.nextBlip=0;E.mute=0;status(`Your turn: note 1 of ${E.tune.length}`);busy=false;
+}
+async function echoLevel(){
+  busy=true;timb=$('timbre').value==='mix'?['aah','ooh'][E.level%2]:$('timbre').value;
+  E.tune=echoTune(Math.min(8,1+E.level));eStats();
+  if($('hints').value==='words')await speak('Level '+E.level);await wait(0.3);await echoPlay();
+}
+async function echoMiss(){
+  busy=true;E.lives--;eStats();status('Missed it');await wait(beeps([55,50],0.18,'triangle',0.25));
+  if(E.lives<=0){echoOver();return}
+  if($('hints').value==='words')await speak(E.lives===1?'Last life. Listen again.':'Listen again.');await echoPlay();
+}
+async function echoLevelUp(){
+  busy=true;E.score+=20*E.tune.length;E.level++;eStats();status('Level up!');
+  await wait(beeps([72,76,79,84,88],0.1,'triangle',0.3));if($('hints').value==='words')await speak(['Great!','Level up!','Beautiful!','You got it!'][Math.floor(Math.random()*4)]);
+  await wait(0.8);if(running)echoLevel();
+}
+async function echoOver(){
+  busy=true;let best=0;try{best=+localStorage.getItem('pitchwalk:echoBest')||0;if(E.score>best)localStorage.setItem('pitchwalk:echoBest',E.score)}catch(e){}
+  const msg=`Game over. You reached level ${E.level} with ${E.score} points.`+(E.score>best?' New high score!':'');status(msg);
+  if($('hints').value==='words')await speak(msg);stopGame(msg);
+}
+function echoTick(buf,dt){
+  if(busy||!E||!E.tune)return;const t=now(),tol=+$('tol').value,live=$('live').value==='on';
+  if(t<E.mute)return;
+  const m=measure(buf),target=E.tune[E.i];
+  if(m!=null){let d=m-target;if($('fold').checked)d-=12*Math.round(d/12);
+    if(Math.abs(d)<=tol){E.on+=dt;E.grace=0;
+      if(E.on>=0.45){chime(E.i,t);E.score+=10;E.i++;E.on=0;E.t=t;E.mute=t+0.2;eStats();
+        if(E.i>=E.tune.length){echoLevelUp();return}status(`Your turn: note ${E.i+1} of ${E.tune.length}`)}}
+    else{E.grace+=dt;if(E.grace>0.4)E.on=0;
+      if(live&&t>=E.nextBlip){const n=Math.abs(d)<1?1:Math.abs(d)<2.5?2:3;blip(d<0,t,n);E.nextBlip=t+0.7+0.11*n;E.mute=t+0.11*n+0.15}}
+  }else E.on=0;
+  if(t-E.t>7){echoMiss();return}
+}
+function stopGame(msg){
+  running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
+  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;
+}
 $('goBtn').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;
-  buildNotes();score=0;tried=0;bestHold=0;prevNote=null;showStats();
+  if($('mode').value==='echo'){buildNotes();E={level:1,lives:3,score:0,tune:null};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
+    if($('hints').value==='words')await speak('Echo challenge. Listen, then sing it back.');echoLevel();return}
+  E=null;buildNotes();score=0;tried=0;bestHold=0;prevNote=null;showStats();
   $('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
   if($('hints').value==='words')await speak('Let\'s sing. Listen, then sing it back.');
   newRound();
 };
 $('stop').onclick=()=>{
+  if(E){stopGame(`Last game: level ${E.level}, ${E.score} points.`);return}
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
   $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;
   $('summary').textContent=`Last walk: you matched ${score} of ${tried} notes, longest hold ${bestHold.toFixed(1)} s.`;$('goBtn').textContent='Start again';
