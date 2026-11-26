@@ -36,7 +36,7 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 10</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 11</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="simon">Simon: the tune grows one note at a time</option><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
@@ -66,6 +66,7 @@ a{color:#5cc3ff}
     </div>
     <div class="row"><button id="demoUp" style="width:auto">Hear "go up"</button><button id="demoDown" style="width:auto">Hear "go down"</button><button id="demoOn" style="width:auto">Hear "on the note"</button><button id="demoVoice" style="width:auto">Hear the voice</button></div>
     <div class="row"><button id="recMine">Record my own reference voice (3 s)</button></div><p id="mineState" style="font-size:14px;margin:0"></p><div></div>
+    <label><input type="checkbox" id="funny" checked> Funny words (Kiii-Buuu-Jeee) in Simon and Listen and compare</label><br>
     <label><input type="checkbox" id="sayName" checked> Say the note name before each note</label><br>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label>
   </div>
@@ -94,9 +95,9 @@ function yin(b,sr,thr){
 
 // ---------- settings ----------
 const SET=['mode','range','key','scale','order','timbre','refLen','hold','tol','limit','hints','live','talk'];
-try{const sv=JSON.parse(localStorage.getItem('pitchwalk:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sayName!=null)$('sayName').checked=sv.sayName;if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
-const save=()=>{try{const sv={sayName:$('sayName').checked,fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchwalk:set',JSON.stringify(sv))}catch(e){}};
-for(const k of [...SET,'sayName','fold'])$(k).addEventListener('change',save);
+try{const sv=JSON.parse(localStorage.getItem('pitchwalk:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sayName!=null)$('sayName').checked=sv.sayName;if(sv.funny!=null)$('funny').checked=sv.funny;if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
+const save=()=>{try{const sv={funny:$('funny').checked,sayName:$('sayName').checked,fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchwalk:set',JSON.stringify(sv))}catch(e){}};
+for(const k of [...SET,'sayName','fold','funny'])$(k).addEventListener('change',save);
 $('setBtn').onclick=()=>{const h=$('settings').hidden;$('settings').hidden=!h;$('setBtn').textContent=h?'Hide settings':'Settings'};
 
 // ---------- audio ----------
@@ -120,6 +121,7 @@ const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870
 const VOX={ // [F1..F5],[B1..B5] for male / female
   aah:{m:[[730,1090,2440,3400,4000],[80,90,120,175,250]],f:[[850,1220,2810,3800,4600],[90,100,140,200,250]]},
   ooh:{m:[[300,870,2240,3300,4000],[60,80,110,175,250]],f:[[370,950,2670,3700,4500],[70,90,130,200,250]]},
+  eee:{m:[[270,2290,3010,3500,4000],[60,90,150,200,250]],f:[[310,2790,3310,3900,4600],[70,100,150,200,250]]},
   ohh:{m:[[500,850,2450,3350,4000],[70,80,120,175,250]],f:[[560,920,2700,3700,4500],[80,90,130,200,250]]}
 };
 function singSamples(f0,dur,vowel,sr,seed=1,fem=f0>210){
@@ -393,37 +395,54 @@ const cStats=()=>{$('stats').textContent=`${C.good} of ${C.total} notes right`};
 async function compareLoop(){
   const w=()=>$('hints').value==='words',tol=+$('tol').value;
   while(running&&C){
-    const n=(()=>{const pool=notes.filter(m=>m!==prevNote);const x=pool[Math.floor(Math.random()*pool.length)];prevNote=x;return x})();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ohh','ooh'][C.total%3]:$('timbre').value;
-    status('Listen: '+SOL[pc(n)]);if($('sayName').checked)await speak(SAY[pc(n)]);if(!running||!C)return;
-    voice(n,2,timb);await wait(2.3);let ok=false;
+    const n=(()=>{const pool=notes.filter(m=>m!==prevNote);const x=pool[Math.floor(Math.random()*pool.length)];prevNote=x;return x})();C.note=n;C.sy=rSyl(C.sy);C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ohh','ooh'][C.total%3]:$('timbre').value;
+    status('Listen: '+SOL[pc(n)]+(funny()?' on '+C.sy[1]:''));if(funny())await speak(C.sy[0]+'!');else if($('sayName').checked)await speak(SAY[pc(n)]);if(!running||!C)return;
+    voice(n,2,vowelOf(C.sy));await wait(2.3);let ok=false;
     for(let tr=1;tr<=3;tr++){
       if(!running||!C)return;
-      status(`Sing ${SOL[pc(n)]} (try ${tr} of 3)`);await wait(beeps([96],0.06,'sine',0.12));
+      status(`Sing ${funny()?C.sy[1]:SOL[pc(n)]} (try ${tr} of 3)`);await wait(beeps([96],0.06,'sine',0.12));
       C.frames=[];C.ds=[];C.rec=true;await wait(3.5);C.rec=false;if(!running||!C)return;
       const tail=C.ds.slice(Math.floor(C.ds.length*0.4)),med=tail.length?[...tail].sort((a,b)=>a-b)[tail.length>>1]:null;
       if(med==null){status('I did not hear you');if(w())await speak('I did not hear you. Sing a bit louder.');else await wait(beeps([60,60],0.15,'triangle',0.2));continue}
       status('You…');if(w())await speak('You');await playRec(C.frames.slice(-Math.ceil(3*ctx.sampleRate/2048)));await wait(0.25);
-      status('Target…');if(w())await speak('Target');voice(n,1.6,timb);await wait(1.9);
-      if(Math.abs(med)<=tol){ok=true;C.good++;cStats();status('✓ Got it!');await wait(beeps([72,76,79,84],0.11,'triangle',0.3));if(w())await speak(['Good!','Yes, that\'s it!','Great!','Perfect!'][Math.floor(Math.random()*4)]);break}
+      status('Target…');if(w())await speak('Target');voice(n,1.6,vowelOf(C.sy));await wait(1.9);
+      if(Math.abs(med)<=tol){ok=true;C.good++;cStats();status('✓ Got it!');await wait(beeps([72,76,79,84],0.11,'triangle',0.3));if(C.good%3===0)applause(1.3);if(w())await speak(pick(YAY));break}
       const a=Math.abs(med),up=med<0,tip=(up?'You were too low. Sing ':'You were too high. Sing ')+(a<1?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower'));
       status(`${up?'▲':'▼'} ${tip}`);if(w())await speak(tip+'.');else await wait(beeps(up?[79,84]:[84,79],0.15,'square',0.12));
-      if(tr<3){status('Target again…');voice(n,1.6,timb);await wait(1.9);if(w())await speak('Try again.')}else if(w())await speak('Next note.');
+      if(tr<3){status('Target again…');voice(n,1.6,vowelOf(C.sy));await wait(1.9);if(w())await speak('Try again.')}else if(w())await speak('Next note.');
     }
     if(!ok&&!w())await wait(0.3);await wait(0.7);
   }
+}
+// ---------- funny words ----------
+const SYL=[['Kee','Kiiii','eee'],['Boo','Buuuu','ooh'],['Lah','Laaaa','aah'],['Moo','Muuuu','ooh'],['Hee','Hiiii','eee'],['Poh','Pooooh','ohh'],['Bah','Baaaa','aah'],['Yo','Yoooo','ohh'],['Woo','Wuuuu','ooh'],['Nah','Naaaa','aah'],['Tee','Tiiii','eee'],['Ho','Hoooo','ohh'],['Zoo','Zuuuu','ooh'],['Kah','Kaaaa','aah']];
+const funny=()=>$('funny').checked;
+const rSyl=prev=>{const pool=SYL.filter(x=>x!==prev);return pool[Math.floor(Math.random()*pool.length)]};
+const vowelOf=sy=>funny()&&sy&&timb!=='mine'&&timb!=='tone'?sy[2]:timb;
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const YAY=['Opera star!','The birds are jealous!','Bravo, maestro!','Standing ovation!','Nailed it!','Pure gold!','The neighbors loved that one!'];
+const OOPS=['Oops, a little wobbly!','The cat covered its ears!','Close, but the pigeons noticed.','Almost!','Not quite, maestro.'];
+function applause(len=1.6){ // a burst of synthetic clapping
+  const sr=ctx.sampleRate,n=Math.floor(len*sr),ab=ctx.createBuffer(1,n,sr),x=ab.getChannelData(0);
+  for(let c=0;c<len*28;c++){const st=Math.floor(Math.random()*(n-sr*0.03)),amp=0.3+Math.random()*0.5;for(let i=0;i<sr*0.025;i++)x[st+i]+=(Math.random()*2-1)*amp*Math.exp(-i/(sr*0.004))}
+  for(let i=0;i<n;i++)x[i]*=Math.min(1,i/(sr*0.1))*Math.min(1,(n-i)/(sr*0.5))*0.5;
+  const s=ctx.createBufferSource(),f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=1800;f.Q.value=0.6;s.buffer=ab;s.connect(f);f.connect(master);s.start();
 }
 // ---------- Simon ----------
 let Sg=null;const SLOT=1.3;
 function simonTick(buf){const m=measure(buf);Sg.frames.push(Float32Array.from(buf));Sg.ms.push({t:now(),m})}
 const sStats=()=>{$('stats').textContent=`Tune length ${Sg.seq.length} · best ${Sg.best} · try ${Sg.tryN} of 3`};
-function simonAdd(){const q=Sg.seq;if(!q.length){q.push(notes[Math.floor(Math.random()*notes.length)]);return}
+function simonAdd(){const q=Sg.seq;Sg.syl.push(rSyl(Sg.syl[Sg.syl.length-1]));if(!q.length){q.push(notes[Math.floor(Math.random()*notes.length)]);return}
   const pool=notes.filter(m=>m!==q[q.length-1]);q.push(pool[Math.floor(Math.random()*pool.length)])}
-async function playSeq(){for(const n of Sg.seq){if(!running||!Sg)return;voice(n,0.95,timb);await wait(SLOT)}}
+const sylText=()=>Sg.syl.slice(0,Sg.seq.length).map(x=>x[1]).join(' - ');
+async function playSeq(words){
+  if(words&&funny()){status('Words: '+sylText());await speak(Sg.syl.slice(0,Sg.seq.length).map(x=>x[0]).join(', ')+'!');await wait(0.2)}
+  for(let k=0;k<Sg.seq.length;k++){if(!running||!Sg)return;voice(Sg.seq[k],0.95,vowelOf(Sg.syl[k]));await wait(SLOT)}}
 async function simonLoop(){
   const w=()=>$('hints').value==='words',tol=Math.max(+$('tol').value,0.8);
   while(running&&Sg){
-    sStats();status(`Listen: ${Sg.seq.length} note${Sg.seq.length>1?'s':''}`);await playSeq();if(!running||!Sg)return;
-    status('Your turn: sing with the ticks');await wait(0.4);
+    sStats();status(`Listen: ${Sg.seq.length} note${Sg.seq.length>1?'s':''}`);await playSeq(true);status(funny()?'Listen: '+sylText():'Listen');if(!running||!Sg)return;
+    status(funny()?'Your turn: '+sylText():'Your turn: sing with the ticks');await wait(0.4);
     Sg.frames=[];Sg.ms=[];const t0=now()+0.35;Sg.rec=true;
     for(let k=0;k<Sg.seq.length;k++){const tt=t0+k*SLOT,o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=2200;o.connect(g);g.connect(master);g.gain.setValueAtTime(0.06,tt);g.gain.exponentialRampToValueAtTime(0.001,tt+0.03);o.start(tt);o.stop(tt+0.04)}
     await wait(0.35+Sg.seq.length*SLOT+0.15);Sg.rec=false;if(!running||!Sg)return;
@@ -437,8 +456,8 @@ async function simonLoop(){
     if(all)tip=Sg.seq.length===1?'Right!':`All ${res.length} right!`;
     else{const d=res[bad],pos=res.length>1?`Note ${bad+1}`:'It';tip=d==null?`${pos}: I did not hear you.`:`${pos} was too ${d<0?'low':'high'}.`;if(res.length>1)tip=`${good} of ${res.length} right. `+tip}
     status((all?'✓ ':'')+tip);
-    if(all){await wait(beeps([72,76,79,84],0.1,'triangle',0.28));if(w())await speak(tip+' Plus one note.');Sg.best=Math.max(Sg.best,Sg.seq.length);simonAdd();Sg.tryN=1}
-    else{if(w())await speak(tip);Sg.tryN++;
+    if(all){await wait(beeps([72,76,79,84],0.1,'triangle',0.28));if(Sg.seq.length>=3)applause(1.2+Sg.seq.length*0.15);if(w())await speak(pick(YAY)+' '+tip+' Plus one note.');Sg.best=Math.max(Sg.best,Sg.seq.length);simonAdd();Sg.tryN=1}
+    else{if(w())await speak(pick(OOPS)+' '+tip);await wait(0.1);Sg.tryN++;
       if(Sg.tryN>3){const msg=`Game over. Your longest tune was ${Sg.best} note${Sg.best===1?'':'s'}.`;let hb=0;try{hb=+localStorage.getItem('pitchwalk:simonBest')||0;if(Sg.best>hb)localStorage.setItem('pitchwalk:simonBest',Sg.best)}catch(e){}
         status(msg);if(w())await speak(msg+(Sg.best>hb?' New record!':''));stopGame(msg+(Sg.best>hb?' New record!':''));return}
       if(w())await speak('Try again.')}
@@ -457,7 +476,7 @@ $('recTest').onclick=async()=>{
 };
 $('goBtn').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;
-  if($('mode').value==='simon'){buildNotes();E=null;C=null;Sg={seq:[],best:0,tryN:1,rec:false,frames:[],ms:[]};simonAdd();timb=$('timbre').value==='mix'?'aah':$('timbre').value;
+  if($('mode').value==='simon'){buildNotes();E=null;C=null;Sg={syl:[],seq:[],best:0,tryN:1,rec:false,frames:[],ms:[]};simonAdd();timb=$('timbre').value==='mix'?'aah':$('timbre').value;
     $('home').hidden=true;$('run').hidden=false;running=true;keepAwake();if($('hints').value==='words')await speak('Simon. Listen, then sing it back.');simonLoop();return}
   Sg=null;
   if($('mode').value==='compare'){buildNotes();E=null;prevNote=null;C={good:0,total:0,rec:false,frames:[],ds:[]};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
