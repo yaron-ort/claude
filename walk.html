@@ -37,7 +37,7 @@ a{color:#5cc3ff}
 <body>
 <div class="card" id="home">
   <h1>Walk and Sing</h1>
-  <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: a low-then-HIGH beep means go up, a HIGH-then-low beep means go down, and they come faster the farther off you are. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
+  <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down, and they come faster the farther off you are. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
   <p style="font-size:14px;margin:6px 0">Bluetooth headphones: connect them after the mic is on.</p>
@@ -190,8 +190,8 @@ async function giveUp(){
   await wait(0.4);newRound();
 }
 let sm=[];
-function blip(up,t){ // two beeps an octave apart: low-HIGH = go up, HIGH-low = go down
-  [up?660:1320,up?1320:660].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*0.11;o.type='triangle';o.frequency.value=f;
+function blip(up,t){ // go up = two HIGH beeps, go down = two LOW beeps
+  [up?1760:220,up?1760:220].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*0.11;o.type='triangle';o.frequency.value=f;
     o.connect(g);g.connect(master);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(0.22,s+0.008);g.gain.setValueAtTime(0.22,s+0.06);g.gain.exponentialRampToValueAtTime(0.001,s+0.09);o.start(s);o.stop(s+0.1)});
 }
 function chime(step,t){ // "you're there" note, climbing as you hold
