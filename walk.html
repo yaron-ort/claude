@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walk and Sing</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm coach in your ear; the screen is only a remote control.
+   IDEA: a pocket singing partner for walks: call and response, all by sound.
+   PICTURE: one huge Start / Stop control; while walking the screen is just a big Stop.
+   COLOUR and TYPE: same night stage as Pitch Glider, teal go, coral stop, Rubik.
+   LAYOUT: one centred column; settings tucked behind a button. */
+:root{color-scheme:dark;--bg:#1b0a12;--ink:#f6ead9;--mute:#c9a9a6;--on:#34d6a6;--hi:#ff8a4c;--line:#4a2230;--card:#2a1019}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif;display:grid;place-items:center;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;max-width:480px;width:100%}
+h1{font-size:clamp(30px,7vw,42px);line-height:1.05;margin:0 0 6px;font-weight:800}
+p{margin:6px 0 12px;color:var(--mute)}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
+select,button{font:inherit;font-size:16px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:#33141f;color:var(--ink);padding:8px 14px}
+button{cursor:pointer;width:100%}
+button.go{background:var(--on);color:#0c1f18;border-color:transparent;font-weight:800;font-size:22px;min-height:64px;margin-top:8px}
+button.on{background:var(--hi);color:#2a0d00;border-color:transparent;font-weight:700}
+button:focus-visible,select:focus-visible{outline:3px solid #5cc3ff;outline-offset:2px}
+label{display:inline-flex;align-items:center;gap:8px;min-height:44px}
+label input{width:20px;height:20px;accent-color:var(--on)}
+#stop{width:min(80vw,360px);height:min(80vw,360px);border-radius:50%;font-size:40px;font-weight:800;background:var(--hi);color:#2a0d00;border:0;box-shadow:0 0 0 14px #ff8a4c22,0 30px 60px #000a}
+#run{text-align:center;display:grid;gap:18px;justify-items:center}
+#status{font-size:20px;font-weight:600;min-height:1.6em}
+.stats{font-variant-numeric:tabular-nums;color:var(--mute)}
+a{color:#5cc3ff}
+.err{color:var(--hi)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="card" id="home">
+  <h1>Walk and Sing</h1>
+  <p>No screen needed. The phone sings a long note, then you sing it back and hold it. You'll hear a chime when you hold it long enough. If you're off, a voice tells you to go higher or lower. Then it moves on to the next note.</p>
+  <p id="summary" style="color:var(--ink)" hidden></p>
+  <button id="micOn">1. Turn on mic</button>
+  <p style="font-size:14px;margin:6px 0">Bluetooth headphones: connect them after the mic is on.</p>
+  <button class="go" id="goBtn">2. Start walking</button>
+  <p class="err" id="err" hidden></p>
+  <button id="setBtn" style="margin-top:8px">Settings</button>
+  <div id="settings" hidden>
+    <div class="row">
+      <select id="range" aria-label="Voice range"><option value="45">Lower voice</option><option value="52" selected>Middle voice</option><option value="57">Higher voice</option></select>
+      <select id="key" aria-label="Key"><option value="0">Do (C)</option><option value="2">Re (D)</option><option value="4">Mi (E)</option><option value="5">Fa (F)</option><option value="7">Sol (G)</option><option value="9">La (A)</option><option value="11">Si (B)</option></select>
+      <select id="scale" aria-label="Scale"><option value="0,2,4,5,7,9,11">Major</option><option value="0,2,3,5,7,8,10">Minor</option><option value="0,2,4,7,9">Pentatonic</option><option value="0,4,7">Do-Mi-Sol only</option></select>
+      <select id="order" aria-label="Order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option></select>
+    </div>
+    <div class="row">
+      <select id="timbre" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="mix">Sound: voices, changing</option><option value="tone">Sound: soft tone</option></select>
+      <select id="refLen" aria-label="Note length"><option value="2">Phone sings 2 s</option><option value="4" selected>Phone sings 4 s</option><option value="8">Phone sings 8 s (long)</option><option value="0">Keep singing with me (headphones only)</option></select>
+      <select id="hold" aria-label="Hold"><option value="2">Hold 2 s to win</option><option value="3" selected>Hold 3 s to win</option><option value="5">Hold 5 s to win</option><option value="8">Hold 8 s to win</option><option value="12">Hold 12 s to win</option></select>
+      <select id="tol" aria-label="Accuracy"><option value="0.7">Easy (within 70 cents)</option><option value="0.45" selected>Normal (within 45 cents)</option><option value="0.25">Hard (within 25 cents)</option></select>
+      <select id="limit" aria-label="Move on"><option value="20">Next note after 20 s</option><option value="30" selected>Next note after 30 s</option><option value="45">Next note after 45 s</option></select>
+      <select id="hints" aria-label="Hints"><option value="words" selected>Hints: spoken words</option><option value="tones">Hints: up / down beeps</option></select>
+    </div>
+    <label><input type="checkbox" id="sayName" checked> Say the note name before each note</label><br>
+    <label><input type="checkbox" id="fold" checked> Any octave counts</label>
+  </div>
+  <p style="font-size:14px;margin-top:14px"><a href="./">Back to Pitch Glider</a></p>
+</div>
+
+<div id="run" hidden>
+  <div id="status">Starting…</div>
+  <button id="stop">Stop</button>
+  <div class="stats" id="stats">&nbsp;</div>
+</div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const SOL=['Do','Do sharp','Re','Re sharp','Mi','Fa','Fa sharp','Sol','Sol sharp','La','La sharp','Si'];
+const pc=m=>((Math.round(m)%12)+12)%12,m2f=m=>440*2**((m-69)/12),f2m=f=>69+12*Math.log2(f/440);
+function yin(b,sr,thr){
+  const W=b.length>>1,tmin=Math.floor(sr/1100),tmax=Math.min(W-1,Math.floor(sr/65)),d=new Float32Array(tmax+2);
+  for(let t=1;t<=tmax+1;t++){let s=0;for(let i=0;i<W;i++){const x=b[i]-b[i+t];s+=x*x}d[t]=s}
+  let run=0;for(let t=1;t<=tmax+1;t++){run+=d[t];d[t]=run?d[t]*t/run:1}
+  for(let t=tmin;t<=tmax;t++)if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;const a=d[t-1],c=d[t+1],den=a-2*d[t]+c;return sr/(den?t+0.5*(a-c)/den:t)}
+  return 0;
+}
+
+// ---------- settings ----------
+const SET=['range','key','scale','order','timbre','refLen','hold','tol','limit','hints'];
+try{const sv=JSON.parse(localStorage.getItem('pitchwalk:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sayName!=null)$('sayName').checked=sv.sayName;if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
+const save=()=>{try{const sv={sayName:$('sayName').checked,fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchwalk:set',JSON.stringify(sv))}catch(e){}};
+for(const k of [...SET,'sayName','fold'])$(k).addEventListener('change',save);
+$('setBtn').onclick=()=>{const h=$('settings').hidden;$('settings').hidden=!h;$('setBtn').textContent=h?'Hide settings':'Settings'};
+
+// ---------- audio ----------
+let ctx=null,mic=null,proc=null,master=null,wake=null;
+async function startMic(){
+  if(mic)return;
+  if(!navigator.mediaDevices?.getUserMedia)throw new Error('no mic');
+  const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  let first;try{const pre=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.label);const own=pre.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');if(pre.some(d=>BT.test(d.label))&&own)first=own.deviceId}catch(e){}
+  mic=await navigator.mediaDevices.getUserMedia(cons(first));
+  ctx=ctx||new AudioContext();await ctx.resume();
+  master=ctx.createGain();master.gain.value=0.9;master.connect(ctx.destination);
+  const src=ctx.createMediaStreamSource(mic);
+  proc=ctx.createScriptProcessor(2048,1,1);const sink=ctx.createGain();sink.gain.value=0;
+  src.connect(proc);proc.connect(sink);sink.connect(ctx.destination);
+  proc.onaudioprocess=e=>{if(running)tick(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
+}
+const now=()=>ctx.currentTime;
+const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
+function voice(m,len,tb){ // a sung "aah"/"ooh" or a soft tone; len 0 = until stopped
+  const t=now(),f=m2f(m),out=ctx.createGain(),oscs=[];out.connect(master);
+  out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(1,t+0.15);
+  if(tb==='tone'){
+    const o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain();o.type='triangle';o.frequency.value=f;o2.frequency.value=2*f;g.gain.value=0.35;g2.gain.value=0.06;
+    o.connect(g);o2.connect(g2);g.connect(out);g2.connect(out);oscs.push(o,o2);
+  }else{
+    const o=ctx.createOscillator(),lfo=ctx.createOscillator(),lg=ctx.createGain();o.type='sawtooth';o.frequency.value=f;
+    lfo.frequency.value=5;lg.gain.value=f*0.004;lfo.connect(lg);lg.connect(o.frequency);oscs.push(o,lfo);
+    for(const [F,a,B] of FORM[tb]){const bp=ctx.createBiquadFilter(),g=ctx.createGain();bp.type='bandpass';bp.frequency.value=F;bp.Q.value=F/B;g.gain.value=a*(tb==="ooh"?1.6:2.6);o.connect(bp);bp.connect(g);g.connect(out)}
+  }
+  oscs.forEach(o=>o.start(t));
+  const stop=(at=now())=>{out.gain.cancelScheduledValues(at);out.gain.setValueAtTime(out.gain.value,at);out.gain.linearRampToValueAtTime(0,at+0.2);oscs.forEach(o=>{try{o.stop(at+0.25)}catch(e){}})};
+  if(len)stop(t+len-0.2);
+  return {stop};
+}
+function beeps(list,gap=0.13,type='sine',vol=0.25){const t=now();list.forEach((m,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*gap;o.type=type;o.frequency.value=m2f(m);o.connect(g);g.connect(master);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(vol,s+0.01);g.gain.exponentialRampToValueAtTime(0.001,s+gap*2.2);o.start(s);o.stop(s+gap*2.3)});return list.length*gap+gap*1.3}
+function speak(text){
+  return new Promise(res=>{
+    if(!('speechSynthesis' in window)){res();return}
+    const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=1.05;let done=false;const fin=()=>{if(!done){done=true;res()}};
+    u.onend=fin;u.onerror=fin;speechSynthesis.cancel();speechSynthesis.speak(u);setTimeout(fin,600+text.length*120);
+  });
+}
+const wait=s=>new Promise(r=>setTimeout(r,s*1000));
+
+// ---------- game ----------
+let running=false,busy=false,R=null,notes=[],idx=0,dir=1,score=0,tried=0,bestHold=0,drone=null,timb='aah',prevNote=null;
+function buildNotes(){
+  const base=+$('range').value,key=+$('key').value,sc=$('scale').value.split(',').map(Number);
+  let root=base+((key-base)%12+12)%12;if(root>base+5)root-=12;
+  notes=[...sc.map(x=>root+x),root+12];idx=0;dir=1;
+}
+function pickNote(){
+  const o=$('order').value;let n;
+  if(o==='up'){n=notes[idx];if(idx+dir<0||idx+dir>=notes.length)dir*=-1;idx+=dir}
+  else{const pool=o==='near'&&prevNote!=null?notes.filter(m=>Math.abs(m-prevNote)<=4&&m!==prevNote):notes.filter(m=>m!==prevNote);n=pool[Math.floor(Math.random()*pool.length)]}
+  prevNote=n;return n;
+}
+const status=t=>{$('status').textContent=t};
+const showStats=()=>{$('stats').textContent=`${score} of ${tried} notes matched · longest hold ${bestHold.toFixed(1)} s`};
+async function playRef(){
+  const len=+$('refLen').value;
+  if(len===0){if(drone)drone.stop();drone=voice(R.note,0,timb);return}
+  voice(R.note,len,timb);await wait(len+0.25);
+}
+async function newRound(){
+  busy=true;if(drone){drone.stop();drone=null}
+  if(!running)return;
+  const n=pickNote();tried++;showStats();
+  timb=$('timbre').value==='mix'?['aah','ooh'][tried%2]:$('timbre').value;
+  R={note:n,on:0,off:0,grace:0,sil:0,lastHint:0,hints:0,t0:0};
+  status('Listen: '+SOL[pc(n)]);
+  if($('sayName').checked){await speak(SOL[pc(n)]);await wait(0.15)}
+  if(!running)return;
+  await playRef();if(!running)return;
+  R.t0=now();R.lastHint=now();status('Your turn: '+SOL[pc(n)]);busy=false;
+}
+async function hint(d){
+  busy=true;R.hints++;R.off=0;
+  const big=Math.abs(d)>1.5,up=d<0;
+  status(up?(big?'▲ Higher':'▲ A bit higher'):(big?'▼ Lower':'▼ A bit lower'));
+  if($('hints').value==='words')await speak(up?(big?'higher':'a bit higher'):(big?'lower':'a bit lower'));
+  else await wait(beeps(up?(big?[76,83]:[79,81]):(big?[83,76]:[81,79]),0.14,'square',0.12));
+  if(R.hints%2===0&&+$('refLen').value>0){await wait(0.2);status('Listen again');voice(R.note,1.6,timb);await wait(1.8);status('Your turn: '+SOL[pc(R.note)])}
+  await wait(0.25);R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false;
+}
+async function win(){
+  busy=true;score++;showStats();if(drone){drone.stop();drone=null}status('Yes!');
+  await wait(beeps([72,76,79,84],0.11,'triangle',0.3));
+  if($('hints').value==='words')await speak(['Great!','Perfect!','Nice!','Beautiful!','Well done!'][Math.floor(Math.random()*5)]);
+  await wait(0.6);newRound();
+}
+async function giveUp(){
+  busy=true;if(drone){drone.stop();drone=null}status('Next note');
+  if($('hints').value==='words')await speak('Next note');else await wait(beeps([79,72],0.2,'sine',0.15));
+  await wait(0.4);newRound();
+}
+let sm=[];
+function tick(buf,dt){
+  if(busy||!R)return;
+  const t=now(),tol=+$('tol').value,hold=+$('hold').value;
+  let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
+  const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;
+  let m=null;if(hz){sm.push(f2m(hz));if(sm.length>3)sm.shift();m=[...sm].sort((a,b)=>a-b)[sm.length>>1]}else sm=[];
+  if(m!=null){
+    let d=m-R.note;if($('fold').checked)d-=12*Math.round(d/12);R.sil=0;
+    if(Math.abs(d)<=tol){R.on+=dt;R.grace=0;R.off=Math.max(0,R.off-dt);bestHold=Math.max(bestHold,R.on)}
+    else{R.grace+=dt;if(R.grace>0.4)R.on=0;R.off+=dt;R.lastD=d}
+  }else{R.sil+=dt;if(R.sil>0.5)R.on=0}
+  if(R.on>=hold){win();return}
+  if(R.off>1.5&&t-R.lastHint>3.5){hint(R.lastD);return}
+  if(R.sil>7&&+$('refLen').value>0){busy=true;R.sil=0;status('Listen again');playRef().then(()=>{R.lastHint=now();status('Your turn: '+SOL[pc(R.note)]);busy=false});return}
+  if(t-R.t0>+$('limit').value){giveUp();return}
+}
+
+async function keepAwake(){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(running&&document.visibilityState==='visible')keepAwake()});
+$('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
+$('goBtn').onclick=async()=>{
+  await $('micOn').onclick();if(!mic)return;
+  buildNotes();score=0;tried=0;bestHold=0;prevNote=null;showStats();
+  $('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
+  if($('hints').value==='words')await speak('Let\'s sing. Listen, then sing it back.');
+  newRound();
+};
+$('stop').onclick=()=>{
+  running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
+  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;
+  $('summary').textContent=`Last walk: you matched ${score} of ${tried} notes, longest hold ${bestHold.toFixed(1)} s.`;$('goBtn').textContent='Start again';
+};
+}
+</script>
+</body>
+</html>
