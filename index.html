@@ -68,7 +68,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 4</span></h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 5</span></h1>
   <p class="sub">Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
@@ -104,6 +104,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
   </div>
   <div class="bar">
     <label class="chk"><input type="checkbox" id="fold" checked> Any octave counts</label>
+    <label class="chk"><input type="checkbox" id="loop"> Repeat automatically</label>
     <label class="chk"><input type="checkbox" id="phones" checked> I'm wearing headphones</label>
     <select id="tol" aria-label="Difficulty">
       <option value="0.7">Easy (within 70 cents)</option>
@@ -112,7 +113,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
     </select>
     <label class="chk">Song volume <input type="range" id="vol" min="0" max="1" step="0.05" value="0.8" style="width:120px;flex:none"></label>
   </div>
-  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small" id="micUsed"></span><span class="small">With Bluetooth headphones, pick the phone's own mic so the music keeps playing.</span></div>
+  <div class="bar" id="micRow" hidden><label class="chk">Microphone <select id="micSel" aria-label="Microphone"><option value="">Default</option></select></label><span class="small" id="micUsed"></span><span class="small">Bluetooth headphones silent? On Android, connect them after turning on the mic. Or choose the headphones' own mic here: the music then sounds like a phone call, but it plays.</span></div>
   <div class="legend"><span><i style="background:#f6ead955"></i>Singer's melody</span><span><i style="background:var(--on)"></i>You, on pitch</span><span><i style="background:var(--hi)"></i>You, too high</span><span><i style="background:var(--lo)"></i>You, too low</span><span><i style="background:#8a7276"></i>You, while the singer is silent</span></div>
 
   <div class="panel" id="info" hidden></div>
@@ -215,12 +216,14 @@ const EX=[
   {n:'Full major scale',p:[0,2,4,5,7,9,11,12,11,9,7,5,4,2,0],b:0.75},
   {n:'Arpeggio jumps',p:[0,4,7,12,7,4,0],b:1},
   {n:'Long steady notes',p:[0,4,7,4,0],b:3},
-  {n:'Interval leaps',p:[0,7,0,5,0,4,0,12,0],b:1.25}
+  {n:'Interval leaps',p:[0,7,0,5,0,4,0,12,0],b:1.25},
+  {n:'Very long notes (8 s each)',p:[0,2,4,5,7,5,4,2,0],b:13.33,r:2},
+  {n:'Hold one note (15 s)',p:[0],b:25,r:3}
 ];
 $('exSel').insertAdjacentHTML('beforeend',EX.map((e,i)=>`<option value="${i}">${e.n}</option>`).join(''));
 async function buildExercise(i,base){
   const e=EX[i],beat=0.6,notes=[];let t=1.5;
-  for(const up of [0,2,4]){for(const p of e.p){notes.push({t,d:e.b*beat,m:base+up+p});t+=e.b*beat}t+=beat*2}
+  for(const up of [0,2,4]){for(const p of e.p){notes.push({t,d:e.b*beat,m:base+up+p});t+=(e.b+(e.r||0))*beat}t+=beat*2}
   const dur=t+0.5,SR=44100,oc=new OfflineAudioContext(1,Math.ceil(dur*SR),SR);
   for(const n of notes){
     const o=oc.createOscillator(),o2=oc.createOscillator(),g=oc.createGain(),f=440*2**((n.m-69)/12);
@@ -303,7 +306,8 @@ async function play(){
   if(ctx)ctx.resume();
 }
 function stop(){if(playing)offset=now();player.pause();playing=false;$('playBtn').textContent='Play'}
-player.onended=()=>{if(playing){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest()}};
+player.onended=()=>{if(playing){playing=false;offset=dur();$('playBtn').textContent='Play';saveBest();
+  if($('loop').checked&&!recMode)setTimeout(()=>{if(!playing&&offset>=dur()-0.1){const msg=$('info').innerHTML;resetTake();offset=0;play();info(msg+' Starting again…')}},2000)}};
 function seek(t){const was=playing;stop();offset=Math.max(0,Math.min(t,dur()));if(!recMode){user=user.filter(p=>p.t<offset);recount()}if(was)play()}
 $('playBtn').onclick=()=>playing?stop():play();
 $('restartBtn').onclick=()=>{const keep=recMode;stop();offset=0;if(!keep)resetTake();info('',false);play()};
@@ -359,13 +363,19 @@ $('micBtn').onclick=async()=>{
     if(!window.isSecureContext&&location.protocol!=='file:')throw new Error('insecure');
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('none');
     const cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:!ph,noiseSuppression:!ph,autoGainControl:false}});
-    mic=await navigator.mediaDevices.getUserMedia(cons($('micSel').value||undefined));
+    const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i;
+    let first=$('micSel').value||undefined;
+    if(!first){ // mic allowed before: pick the phone's own mic straight away, without touching the headset mic
+      const pre=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.label&&d.deviceId);
+      const own=pre.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
+      if(pre.some(d=>BT.test(d.label))&&own)first=own.deviceId}
+    mic=await navigator.mediaDevices.getUserMedia(cons(first));
     // Bluetooth headsets switch into "phone call" mode when their mic is used, which cuts the music.
     // So prefer the phone's own microphone and leave the headphones for listening.
     const ins=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId);
     $('micSel').innerHTML=ins.map(d=>`<option value="${d.deviceId.replace(/"/g,'')}">${(d.label||'Microphone').replace(/[<>&"']/g,'')}</option>`).join('');
     $('micRow').hidden=ins.length<2;
-    const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,curLabel=mic.getAudioTracks()[0]?.label||'';
+    const curLabel=mic.getAudioTracks()[0]?.label||'';
     if(!$('micSel').dataset.chosen&&BT.test(curLabel)){const alt=ins.find(d=>!BT.test(d.label)&&d.deviceId!=='default'&&d.deviceId!=='communications');
       if(alt){mic.getTracks().forEach(t=>t.stop());mic=await navigator.mediaDevices.getUserMedia(cons(alt.deviceId))}}
     const used=mic.getAudioTracks()[0]?.getSettings?.().deviceId;if(used)$('micSel').value=used;
