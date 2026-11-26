@@ -36,9 +36,9 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 5</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 6</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
-  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="notes">Note practice: hold one long note at a time</option></select>
+  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
@@ -111,7 +111,7 @@ async function startMic(){
   const src=ctx.createMediaStreamSource(mic);
   proc=ctx.createScriptProcessor(2048,1,1);const sink=ctx.createGain();sink.gain.value=0;
   src.connect(proc);proc.connect(sink);sink.connect(ctx.destination);
-  proc.onaudioprocess=e=>{if(running)(E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
+  proc.onaudioprocess=e=>{if(running)(C?compareTick:E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
 }
 const now=()=>ctx.currentTime;
 const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
@@ -244,7 +244,7 @@ $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5)
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
 let E=null;
-const INFO={echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
+const INFO={compare:'The phone sings a note. You sing it for about 3 seconds. Then you hear your own voice, then the target, and whether you got it. If not, you get another try: up to 3 tries, then the next note.',echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
 const modeInfo=()=>{$('modeInfo').textContent=INFO[$('mode').value]};$('mode').addEventListener('change',modeInfo);modeInfo();
 function measure(buf){let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
   const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;if(!hz){sm=[];return null}sm.push(f2m(hz));if(sm.length>3)sm.shift();return [...sm].sort((a,b)=>a-b)[sm.length>>1]}
@@ -320,9 +320,37 @@ function echoTick(buf,dt){
   }else{E.on=0;E.near=0}
   if(t-E.t>7){echoMiss();return}
 }
+// ---------- Listen and compare ----------
+let C=null;
+function compareTick(buf){
+  if(!C||!C.rec)return;const m=measure(buf);
+  if(m!=null){let d=m-C.note;if($('fold').checked)d-=12*Math.round(d/12);C.ds.push(d);C.frames.push(Float32Array.from(buf))}
+}
+const cStats=()=>{$('stats').textContent=`${C.good} of ${C.total} notes right`};
+async function compareLoop(){
+  const w=()=>$('hints').value==='words',tol=+$('tol').value;
+  while(running&&C){
+    const n=pickNote();C.note=n;C.total++;cStats();timb=$('timbre').value==='mix'?['aah','ooh'][C.total%2]:$('timbre').value;
+    status('Listen: '+SOL[pc(n)]);if($('sayName').checked)await speak(SAY[pc(n)]);if(!running||!C)return;
+    voice(n,2,timb);await wait(2.3);let ok=false;
+    for(let tr=1;tr<=3;tr++){
+      if(!running||!C)return;
+      status(`Sing ${SOL[pc(n)]} (try ${tr} of 3)`);await wait(beeps([96],0.06,'sine',0.12));
+      C.frames=[];C.ds=[];C.rec=true;await wait(3.5);C.rec=false;if(!running||!C)return;
+      const tail=C.ds.slice(Math.floor(C.ds.length*0.4)),med=tail.length?[...tail].sort((a,b)=>a-b)[tail.length>>1]:null;
+      if(med==null){status('I did not hear you');if(w())await speak('I did not hear you. Sing a bit louder.');else await wait(beeps([60,60],0.15,'triangle',0.2));continue}
+      status('You…');if(w())await speak('You');await playRec(C.frames.slice(-Math.ceil(3*ctx.sampleRate/2048)));await wait(0.25);
+      status('Target…');if(w())await speak('Target');voice(n,1.6,timb);await wait(1.9);
+      if(Math.abs(med)<=tol){ok=true;C.good++;cStats();status('✓ Got it!');await wait(beeps([72,76,79,84],0.11,'triangle',0.3));if(w())await speak(['Good!','Yes, that\'s it!','Great!','Perfect!'][Math.floor(Math.random()*4)]);break}
+      const a=Math.abs(med),up=med<0,tip=a<1?(up?'a bit higher':'a bit lower'):a<3?(up?'one step higher':'one step lower'):(up?'much higher':'much lower');
+      status(`${up?'▲':'▼'} ${tip}`);if(w())await speak(tr<3?tip+'. Try again.':tip+'. Next note.');else await wait(beeps(up?[79,84]:[84,79],0.15,'square',0.12));
+    }
+    if(!ok&&!w())await wait(0.3);await wait(0.7);
+  }
+}
 function stopGame(msg){
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
-  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;
+  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;C=null;
 }
 $('recTest').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;const b=$('recTest');b.disabled=true;b.textContent='Recording… sing now';
@@ -332,6 +360,9 @@ $('recTest').onclick=async()=>{
 };
 $('goBtn').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;
+  if($('mode').value==='compare'){buildNotes();E=null;prevNote=null;C={good:0,total:0,rec:false,frames:[],ds:[]};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
+    if($('hints').value==='words')await speak('Listen and compare.');compareLoop();return}
+  C=null;
   if($('mode').value==='echo'){buildNotes();E={level:1,lives:3,score:0,tune:null};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
     if($('hints').value==='words')await speak('Echo challenge. Listen, then sing it back.');echoLevel();return}
   E=null;buildNotes();score=0;tried=0;bestHold=0;prevNote=null;showStats();
@@ -341,6 +372,7 @@ $('goBtn').onclick=async()=>{
 };
 $('stop').onclick=()=>{
   if(E){stopGame(`Last game: level ${E.level}, ${E.score} points.`);return}
+  if(C){stopGame(`Last walk: ${C.good} of ${C.total} notes right.`);return}
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
   $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;
   $('summary').textContent=`Last walk: you matched ${score} of ${tried} notes, longest hold ${bestHold.toFixed(1)} s.`;$('goBtn').textContent='Start again';
