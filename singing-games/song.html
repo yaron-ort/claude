@@ -33,6 +33,7 @@ button:focus-visible,.btn:focus-within{outline:3px solid var(--lo);outline-offse
 #yName{font-size:40px;font-weight:800;line-height:1.1;min-width:2.4em}
 #now{gap:28px}
 #nNext{font-size:14px;color:var(--mute);text-align:center}
+.legend{display:flex;gap:18px;justify-content:center;font-size:14px;color:var(--ink)}.legend span{display:flex;align-items:center;gap:6px}.legend i{width:22px;height:4px;border-radius:2px;display:inline-block}
 canvas{width:100%;height:340px;display:block;border-radius:14px;background:linear-gradient(#2a1019,#1f0c15);border:1px solid var(--line)}
 .ctrl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #seek{flex:1 1 160px;accent-color:var(--gold)}
@@ -63,6 +64,7 @@ select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--l
       <div id="now"><div style="text-align:center"><div class="note">Singer</div><div style="display:flex;align-items:baseline;gap:10px"><div id="nName">–</div><div id="nSol"></div></div></div>
         <div id="youBox" hidden style="text-align:center"><div class="note">You</div><div id="yName">–</div><div id="yMsg" class="note">&nbsp;</div></div></div>
       <div id="nNext"></div>
+      <div class="legend"><span><i style="background:#ffd166"></i>Singer</span><span id="lgYou" hidden><i style="background:#5cc3ff"></i>You</span></div>
       <canvas id="cv" aria-label="Singer's pitch over time"></canvas>
       <div class="ctrl">
         <button id="playBtn" class="primary" style="min-width:90px">Play</button>
@@ -79,7 +81,7 @@ select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--l
         <label>Show ahead <select id="ahead"><option value="0">Only what was sung</option><option value="4" selected>Next 4 seconds too</option></select></label>
       </div>
     </div>
-    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. The phone's own mic is used, so Bluetooth headphones keep playing the song. Teal means you're on the singer's note, coral too high, blue too low (any octave counts). Your voice is kept for each song: sing a part again to replace it, and a faded line ahead shows your last take.</p>
+    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. The phone's own mic is used, so Bluetooth headphones keep playing the song. Your voice is the blue line, the singer is gold. Any octave counts. Your line is kept for each song: sing a part again to replace it.</p>
     <p class="note">The line is worked out from the whole song, so in loud instrumental parts it can sometimes follow an instrument instead of the singer.</p>
   </div>
 </main>
@@ -206,7 +208,7 @@ async function open(s){
       $('prog').classList.remove('busy');s.pitch=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes: '+Math.round(x*100)+'%'});s.hop=HOP;s.ver=2;s.dur=buf.duration;await putSong(s)}
     catch(e){$('status').textContent='Could not read '+s.name+'.';$('prog').style.display='none';return}
     $('prog').style.display='none';$('status').textContent='Ready. Songs stay on this phone only.'}
-  saveTake();stop();vc=null;cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);TK=s.take&&s.take.length===P.length?Float32Array.from(s.take):new Float32Array(P.length).fill(NaN);lastF=-1;dirty=false;NOTES=notesOf(P);
+  saveTake();stop();vc=null;cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);TK=s.take&&s.take.length===P.length?Float32Array.from(s.take):new Float32Array(P.length).fill(NaN);lastF=-1;dirty=false;$('lgYou').hidden=!mic&&!TK.some(v=>!isNaN(v));NOTES=notesOf(P);
   const v=[...P].filter(x=>!isNaN(x)).sort((a,b)=>a-b);
   if(v.length){lo=Math.floor(v[Math.floor(v.length*0.05)])-2;hi=Math.ceil(v[Math.floor(v.length*0.97)])+2;if(hi-lo<12){const c=(hi+lo)/2;lo=Math.floor(c-6);hi=Math.ceil(c+6)}}
   if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(new Blob([s.blob],{type:s.type||'audio/mpeg'}));au.src=url;au.playbackRate=+$('speed').value;
@@ -254,28 +256,28 @@ function draw(t){
   // note bars
   const f0=Math.floor((t-back)/HOP),f1=Math.ceil((t+ahead)/HOP),fn=Math.floor(t/HOP);
   for(const n of NOTES){if(n.e<f0||n.s>f1)continue;const cur_=n.s<=fn&&fn<n.e;
-    cx.fillStyle=cur_?'#ffd16666':n.s>fn?'#f6ead922':'#f6ead918';const xa=x(n.s*HOP),xb=x(n.e*HOP);
+    cx.fillStyle=cur_?'#ffd16655':'#ffd1661c';const xa=x(n.s*HOP),xb=x(n.e*HOP);
     cx.beginPath();cx.roundRect(xa,y(n.m)-6,Math.max(4,xb-xa),12,5);cx.fill();
-    if(xb-xa>26&&n.s>fn-40){cx.fillStyle=cur_?'#ffd166':n.s>fn?'#f6ead9aa':'#c9a9a6aa';cx.fillText(label(n.m),xa+3,y(n.m)-14)}}
+    if(xb-xa>26&&n.s>fn-40){cx.fillStyle=cur_?'#ffd166':'#ffd166aa';cx.fillText(label(n.m),xa+3,y(n.m)-14)}}
   // pitch line
   const seg=(a,b,col,w)=>{cx.strokeStyle=col;cx.lineWidth=w;cx.lineJoin='round';cx.beginPath();let pen=false;
     for(let f=Math.max(0,a);f<=Math.min(P.length-1,b);f++){const v=P[f];if(isNaN(v)){pen=false;continue}const X=x(f*HOP),Y=y(v);pen?cx.lineTo(X,Y):cx.moveTo(X,Y);pen=true}cx.stroke()};
-  seg(f0,fn,'#f6ead9cc',3);if(ahead)seg(fn,f1,'#f6ead955',2);
+  seg(f0,fn,'#ffd166',3);if(ahead)seg(fn,f1,'#ffd16666',2);
   // your voice
   if(TK){cx.lineCap='round';let pv=null;
-    for(let f=Math.max(0,f0);f<=Math.min(TK.length-1,f1);f++){const m=TK[f];if(isNaN(m)){pv=null;continue}const X=x(f*HOP),Y=y(m);
-      if(pv&&Math.abs(m-pv.m)<2){const r=P[f],c=isNaN(r)?'none':Math.abs(m-r)<=0.5?'on':m>r?'hi':'lo';cx.globalAlpha=f>fn?0.35:1;cx.lineWidth=f>fn?3:4;cx.strokeStyle=COL[c];cx.beginPath();cx.moveTo(pv.X,pv.Y);cx.lineTo(X,Y);cx.stroke()}pv={m,X,Y}}
+    for(let f=Math.max(0,f0);f<=Math.min(TK.length-1,fn);f++){const m=TK[f];if(isNaN(m)){pv=null;continue}const X=x(f*HOP),Y=y(m);
+      if(pv&&Math.abs(m-pv.m)<2){cx.lineWidth=4;cx.strokeStyle=YOU;cx.beginPath();cx.moveTo(pv.X,pv.Y);cx.lineTo(X,Y);cx.stroke()}pv={m,X,Y}}
     cx.globalAlpha=1}
-  cx.strokeStyle='#ffd166';cx.lineWidth=2;cx.beginPath();cx.moveTo(X0,0);cx.lineTo(X0,H);cx.stroke();
+  cx.strokeStyle='#f6ead988';cx.lineWidth=2;cx.beginPath();cx.moveTo(X0,0);cx.lineTo(X0,H);cx.stroke();
   if(!isNaN(P[fn])){cx.fillStyle='#ffd166';cx.beginPath();cx.arc(X0,y(P[fn]),7,0,7);cx.fill()}
 }
 // ---------- mic: your voice on the same graph ----------
 let mic=null,TK=null,lastF=-1,sm=[],dirty=false;
-const COL={on:'#34d6a6',hi:'#ff8a4c',lo:'#5cc3ff',none:'#c9a9a6'};
+const COL={on:'#34d6a6',hi:'#ff8a4c',lo:'#5cc3ff',none:'#c9a9a6'},YOU='#5cc3ff';
 function judge(m,t){const r=P&&P[Math.floor(t/HOP)];if(r==null||isNaN(r))return {c:'none',v:m};
   const v=m-12*Math.round((m-r)/12),d=v-r;return {c:Math.abs(d)<=0.5?'on':d>0?'hi':'lo',v,d}}
 $('micBtn').onclick=async()=>{
-  if(mic){mic.stream.getTracks().forEach(x=>x.stop());mic.ac.close();mic=null;$('micBtn').textContent='Mic: sing along';$('youBox').hidden=true;$('micNote').hidden=true;return}
+  if(mic){mic.stream.getTracks().forEach(x=>x.stop());mic.ac.close();mic=null;$('micBtn').textContent='Mic: sing along';$('youBox').hidden=true;$('micNote').hidden=true;$('lgYou').hidden=TK&&!TK.some(v=>!isNaN(v));return}
   try{
     // Use the phone's own mic and no echo cancellation: otherwise Android switches Bluetooth headphones to "call mode" and the song stops playing in them
     const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
@@ -283,7 +285,7 @@ $('micBtn').onclick=async()=>{
     let id=await pickOwn(),stream=await navigator.mediaDevices.getUserMedia(cons(id));
     if(!id){const id2=await pickOwn();if(id2){stream.getTracks().forEach(x=>x.stop());stream=await navigator.mediaDevices.getUserMedia(cons(id2))}}
     const ac=new (window.AudioContext||window.webkitAudioContext)(),src=ac.createMediaStreamSource(stream),an=ac.createAnalyser();an.fftSize=2048;src.connect(an);
-    mic={stream,ac,an,buf:new Float32Array(2048)};$('micBtn').textContent='Mic off';$('youBox').hidden=false;$('micNote').hidden=false;
+    mic={stream,ac,an,buf:new Float32Array(2048)};$('micBtn').textContent='Mic off';$('youBox').hidden=false;$('micNote').hidden=false;$('lgYou').hidden=false;
   }catch(e){$('status').textContent='The mic is blocked. Allow the microphone for this site in Chrome and try again.';}
 };
 function listen(){
@@ -291,8 +293,8 @@ function listen(){
   const hz=Math.sqrt(e/b.length)>0.008?yin(b,mic.ac.sampleRate,0.15,65,1100,b.length):0,t=au.currentTime;
   if(hz){sm.push(f2m(hz));if(sm.length>3)sm.shift();const m=[...sm].sort((a,c)=>a-c)[sm.length>>1],j=judge(m,t);
     if(!au.paused&&TK){const f=Math.floor(t/HOP);if(f>=0&&f<TK.length){if(lastF>=0&&f>lastF&&f-lastF<6)for(let k=lastF+1;k<f;k++)TK[k]=j.v;TK[f]=j.v;lastF=f;dirty=true}}
-    $('yName').textContent=$('names').value==='sol'?sol(m):nm(m);$('yName').style.color=COL[j.c];
-    $('yMsg').textContent=j.c==='on'?'On the note!':j.c==='hi'?'A bit high':j.c==='lo'?'A bit low':' '}
+    $('yName').textContent=$('names').value==='sol'?sol(m):nm(m);$('yName').style.color=YOU;
+    $('yMsg').textContent=j.c==='on'?'Same as the singer':j.c==='hi'?'A bit high':j.c==='lo'?'A bit low':' '}
   else{sm=[];lastF=-1;$('yName').textContent='–';$('yName').style.color='var(--mute)';$('yMsg').innerHTML='&nbsp;'}
 }
 au.addEventListener('seeked',()=>{lastF=-1});
