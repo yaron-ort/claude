@@ -156,6 +156,7 @@ $('file').onchange=async e=>{
     const label=files.length>1?` (${k+1} of ${files.length})`:'';
     try{
       $('status').textContent='Reading '+f.name+label+'…';$('prog').style.display='block';$('prog').firstChild.style.width='0';
+      const dup=songs.find(x=>x.name===f.name.replace(/\.[^.]+$/,'')&&x.blob&&x.blob.size===f.size);if(dup&&dup.pitch){last=dup;continue}
       const buf=await ac.decodeAudioData(await f.arrayBuffer());
       $('status').textContent='Finding the singer\'s notes'+label+'…';
       const p=await track(buf,x=>$('prog').firstChild.style.width=(x*100)+'%');
@@ -169,7 +170,12 @@ $('file').onchange=async e=>{
 
 // ---------- player ----------
 const au=$('au'),cv=$('cv'),cx=cv.getContext('2d');
-function open(s){
+async function open(s){
+  if(!s.pitch){stop();$('status').textContent='Finding the singer\'s notes in '+s.name+'…';$('prog').style.display='block';
+    try{const ac=new (window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(await s.blob.arrayBuffer());ac.close();
+      s.pitch=await track(buf,x=>$('prog').firstChild.style.width=(x*100)+'%');s.hop=HOP;s.dur=buf.duration;await putSong(s)}
+    catch(e){$('status').textContent='Could not read '+s.name+'.';$('prog').style.display='none';return}
+    $('prog').style.display='none';$('status').textContent='Ready. Songs stay on this phone only.'}
   stop();cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);NOTES=notesOf(P);
   const v=[...P].filter(x=>!isNaN(x)).sort((a,b)=>a-b);
   if(v.length){lo=Math.floor(v[Math.floor(v.length*0.05)])-2;hi=Math.ceil(v[Math.floor(v.length*0.97)])+2;if(hi-lo<12){const c=(hi+lo)/2;lo=Math.floor(c-6);hi=Math.ceil(c+6)}}

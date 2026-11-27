@@ -75,7 +75,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 10</span></h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 11</span></h1>
   <p class="sub"><a href="./" style="color:var(--on);font-weight:700">All singing games</a> · <a href="song.html" style="color:#ffd166;font-weight:700">Song Notes</a><br>Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
@@ -103,6 +103,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 
   <div class="bar">
     <label class="file">Load a song file<input type="file" id="songFile" accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.flac,.webm"></label>
+    <select id="mySongs" aria-label="My songs" hidden><option value="">My songs…</option></select>
     <select id="exSel" aria-label="Practice exercise">
       <option value="">…or a practice exercise</option>
     </select>
@@ -377,8 +378,34 @@ $('seek').oninput=e=>seek(+e.target.value);
 $('vol').oninput=e=>{player.volume=+e.target.value};
 $('fold').onchange=$('tol').onchange=()=>{recount();showBest()};
 
-$('songFile').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;ensureCtx();$('exSel').value='';
+// ---------- my songs: kept on this device (shared with Song Notes) ----------
+let sdb=null;
+const sdbOpen=()=>new Promise(res=>{try{const r=indexedDB.open('songnotes',1);r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'});r.onsuccess=()=>res(sdb=r.result);r.onerror=()=>res(null)}catch(e){res(null)}});
+const stx=(mode,fn)=>new Promise(res=>{if(!sdb)return res(null);const t=sdb.transaction('songs',mode),r=fn(t.objectStore('songs'));t.oncomplete=()=>res(r&&r.result);t.onerror=()=>res(null)});
+let mySongs=[];
+async function listSongs(sel){
+  mySongs=((await stx('readonly',st=>st.getAll()))||[]).sort((a,b)=>a.added-b.added);
+  const m=$('mySongs');m.hidden=!mySongs.length;
+  m.innerHTML='<option value="">My songs…</option>'+mySongs.map(x=>`<option value="${x.id}">${x.name.replace(/[<>&"']/g,'')}</option>`).join('')+(mySongs.length?'<option value="__del">Remove the current song from this list</option>':'');
+  m.value=sel||'';
+}
+async function saveSong(f,dur){
+  const old=mySongs.find(x=>x.name===f.name.replace(/\.[^.]+$/,'')&&x.blob&&x.blob.size===f.size);if(old)return old.id;
+  const rec={id:Date.now()+'-pp',name:f.name.replace(/\.[^.]+$/,''),blob:f,type:f.type,dur,added:Date.now()};
+  await stx('readwrite',st=>st.put(rec));return rec.id;
+}
+let curSongId=null;
+$('mySongs').onchange=async()=>{
+  const v=$('mySongs').value;
+  if(v==='__del'){if(curSongId&&confirm('Remove this song from your list on this phone?')){await stx('readwrite',st=>st.delete(curSongId));curSongId=null}await listSongs(curSongId);return}
+  const x=mySongs.find(y=>y.id===v);if(x)loadSongFile(new File([x.blob],x.name+'.mp3',{type:x.type||'audio/mpeg'}),x.id);
+};
+sdbOpen().then(async()=>{await listSongs();let id=null;try{id=localStorage.getItem('songnotes:last')}catch(e){}
+  const x=mySongs.find(y=>y.id===id);if(x&&!songBuf){$('mySongs').value=x.id;loadSongFile(new File([x.blob],x.name+'.mp3',{type:x.type||'audio/mpeg'}),x.id)}});
+
+$('songFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadSongFile(f,null)};
+async function loadSongFile(f,savedId){
+  ensureCtx();$('exSel').value='';
   info(`Listening for the singer in <b>${f.name.replace(/[<>&"']/g,'')}</b>… <div class="prog"><i id="pg"></i></div>`);
   try{
     const buf=await ctx.decodeAudioData(await f.arrayBuffer());
@@ -386,9 +413,9 @@ $('songFile').onchange=async e=>{
     const voiced=r.filter(x=>!isNaN(x)).length/r.length;
     loaded(buf,r,f.name.replace(/\.[^.]+$/,''),f);
     info(voiced<0.15?`I could only find a clear singing voice in ${Math.round(voiced*100)}% of this song. The backing music may be too busy: try a vocals-only or acoustic version for better feedback.`:`Ready. I found the singer's voice in about ${Math.round(voiced*100)}% of the song. Press Play and sing along.`);
+    curSongId=savedId||await saveSong(f,buf.duration);await listSongs(curSongId);try{localStorage.setItem('songnotes:last',curSongId)}catch(e){}
   }catch(err){info('Sorry, this file could not be read as audio. Try an MP3, M4A or WAV file.')}
-  e.target.value='';
-};
+}
 async function loadEx(){
   const i=$('exSel').value;if(i==='')return;ensureCtx();
   const {buf,ref:r}=await buildExercise(+i,+$('voiceSel').value);
