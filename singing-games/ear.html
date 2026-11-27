@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Name that Note</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a quick, friendly ear quiz.
+   IDEA: a vertical pitch ladder: answers hang at the height of their note, like rungs.
+   PICTURE: the ladder itself fills the screen, with big tappable note rungs.
+   COLOUR and TYPE: same night stage as the other games, teal right, coral wrong, Rubik.
+   LAYOUT: score strip on top, ladder in the middle, Play-again and Settings below. */
+:root{color-scheme:dark;--bg:#1b0a12;--ink:#f6ead9;--mute:#c9a9a6;--on:#34d6a6;--hi:#ff8a4c;--lo:#5cc3ff;--line:#4a2230;--card:#2a1019}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:14px 14px 24px;display:flex;flex-direction:column;gap:10px;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-size:26px;margin:0;font-weight:800}
+a{color:var(--lo)}
+.stats{display:flex;gap:8px}
+.stats div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 10px;text-align:center;line-height:1.15}
+.stats b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.stats span{font-size:12px;color:var(--mute)}
+#ladder{position:relative;flex:1;min-height:420px;border-radius:18px;background:linear-gradient(#2a1019,#1f0c15);border:1px solid var(--line);overflow:hidden}
+.rung{position:absolute;left:12%;right:12%;height:54px;transform:translateY(-50%);border-radius:14px;border:2px solid #f6ead955;background:#33141f;color:var(--ink);font:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .15s,border-color .15s}
+.rung b{font-size:26px;font-weight:800}.rung small{font-size:15px;color:var(--mute)}
+.rung:focus-visible{outline:3px solid var(--lo);outline-offset:2px}
+.rung.right{background:var(--on);border-color:var(--on);color:#0c1f18}.rung.right small{color:#0c1f18}
+.rung.wrong{background:var(--hi);border-color:var(--hi);color:#2a0d00}.rung.wrong small{color:#2a0d00}
+.axis{position:absolute;left:10px;top:10px;bottom:10px;font-size:12px;color:var(--mute);display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+#msg{text-align:center;font-size:20px;font-weight:700;min-height:1.5em}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+button,select{font:inherit;font-size:16px;min-height:48px;border-radius:12px;border:1px solid var(--line);background:#33141f;color:var(--ink);padding:8px 14px}
+button{cursor:pointer}
+.go{background:var(--on);color:#0c1f18;border-color:transparent;font-weight:800;flex:1;font-size:19px}
+#settings{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+#settings select{width:100%;margin:4px 0}
+label{display:flex;align-items:center;gap:8px;min-height:44px}label input{width:20px;height:20px;accent-color:var(--on)}
+[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){.rung{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Name that Note</h1>
+    <div class="stats"><div><b id="sScore">0</b><span>right</span></div><div><b id="sStreak">0</b><span>streak</span></div><div><b id="sBest">0</b><span>best</span></div></div>
+  </header>
+  <div id="msg">Tap Play, listen, then tap the note you heard.</div>
+  <div id="ladder"><div class="axis"><span>high</span><span>low</span></div></div>
+  <div class="row"><button class="go" id="playBtn">Play</button><button id="setBtn">Settings</button></div>
+  <div id="settings" hidden>
+    <select id="level" aria-label="Level"><option value="0" selected>Easy: 3 choices, very far apart</option><option value="1">Medium: 4 choices, a few steps apart</option><option value="2">Hard: 5 choices, neighbouring notes</option><option value="3">Expert: 5 choices, sharps too</option></select>
+    <select id="range" aria-label="Range"><option value="40,64">Low voice range (E2 to E4)</option><option value="45,69" selected>Middle range (A2 to A4)</option><option value="48,72">High voice range (C3 to C5)</option><option value="36,84">Very wide (C2 to C6)</option></select>
+    <select id="sound" aria-label="Sound"><option value="aah" selected>Sound: voice singing "aah"</option><option value="ooh">Sound: voice singing "ooh"</option><option value="piano">Sound: plucked string</option><option value="tone">Sound: soft tone</option></select>
+    <label><input type="checkbox" id="sol" checked> Show do-re-mi under the letters</label>
+    <label><input type="checkbox" id="auto" checked> Go to the next note by itself</label>
+  </div>
+  <p style="font-size:14px;color:var(--mute);margin:0"><a href="./">All games</a></p>
+</div>
+<script>
+{
+const $=id=>document.getElementById(id);
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],SOL=['Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#','La','La#','Si'];
+const pc=m=>((m%12)+12)%12,name=m=>NN[pc(m)]+(Math.floor(m/12)-1),m2f=m=>440*2**((m-69)/12);
+const NAT=[0,2,4,5,7,9,11];
+const VOX={ // [F1..F5],[B1..B5] for male / female
+  aah:{m:[[730,1090,2440,3400,4000],[80,90,120,175,250]],f:[[850,1220,2810,3800,4600],[90,100,140,200,250]]},
+  ooh:{m:[[300,870,2240,3300,4000],[60,80,110,175,250]],f:[[370,950,2670,3700,4500],[70,90,130,200,250]]},
+  eee:{m:[[270,2290,3010,3500,4000],[60,90,150,200,250]],f:[[310,2790,3310,3900,4600],[70,100,150,200,250]]},
+  ohh:{m:[[500,850,2450,3350,4000],[70,80,120,175,250]],f:[[560,920,2700,3700,4500],[80,90,130,200,250]]}
+};
+function singSamples(f0,dur,vowel,sr,seed=1,fem=f0>210){
+  const n=Math.floor(dur*sr),out=new Float32Array(n),V=VOX[vowel]||VOX.aah,[F,B]=fem?V.f:V.m;
+  let rnd=seed*9301+49297;const rand=()=>{rnd=(rnd*9301+49297)%233280;return rnd/233280};
+  const res=F.map((f,i)=>{const r=Math.exp(-Math.PI*B[i]/sr),c=-r*r,b=2*r*Math.cos(2*Math.PI*f/sr),a=1-b-c;return {a,b,c,y1:0,y2:0}});
+  let ph=0,prevG=0,tilt=0,drift=0,driftT=0,vibPh=rand()*6.28,noiseLP=0;
+  const vibRate=5.2+rand()*0.6;
+  for(let i=0;i<n;i++){
+    const t=i/sr;
+    if(i%256===0){driftT=(rand()-0.5)*0.06}drift+=(driftT-drift)*0.0005;          // slow wander, a few cents
+    const vibDepth=0.12*Math.min(1,Math.max(0,(t-0.35)/0.6));                        // vibrato grows in gently (semitones)
+    const scoop=-0.2*Math.exp(-t/0.05);                                              // tiny scoop up into the note
+    const semi=scoop+drift+vibDepth*Math.sin(vibPh);vibPh+=2*Math.PI*vibRate/sr;
+    const f=f0*Math.pow(2,semi/12);ph+=f/sr;if(ph>=1)ph-=1;
+    const Tp=0.42,Tn=0.18;let g=ph<Tp?0.5*(1-Math.cos(Math.PI*ph/Tp)):ph<Tp+Tn?Math.cos(Math.PI*(ph-Tp)/(2*Tn)):0; // Rosenberg glottal flow
+    let src=(g-prevG)*sr/f0/6;prevG=g;                                                // flow derivative (lip radiation)
+    noiseLP+=0.5*((rand()*2-1)-noiseLP);src+=noiseLP*(0.012+0.05*g);                 // breath, stronger when glottis open
+    tilt+=0.45*(src-tilt);let x=tilt;                                                 // soften the top end
+    for(const r of res){const y=r.a*x+r.b*r.y1+r.c*r.y2;r.y2=r.y1;r.y1=y;x=y}        // formant cascade
+    const env=Math.min(1,t/0.12)*Math.min(1,(dur-t)/0.25)*(1+0.04*Math.sin(vibPh));
+    out[i]=x*env;
+  }
+  let pk=0;for(const v of out)pk=Math.max(pk,Math.abs(v));if(pk)for(let i=0;i<n;i++)out[i]*=0.6/pk;
+  return out;
+}
+
+let ctx=null,master=null;
+function audio(){if(!ctx){ctx=new AudioContext();master=ctx.createGain();master.gain.value=0.9;master.connect(ctx.destination)}ctx.resume()}
+const cache=new Map();
+function play(m,dur=1.6){
+  audio();const t=ctx.currentTime+0.03,snd=$('sound').value,f=m2f(m),out=ctx.createGain();out.connect(master);
+  if(snd==='aah'||snd==='ooh'){const k=m+snd;let ab=cache.get(k);if(!ab){ab=ctx.createBuffer(1,Math.floor(dur*ctx.sampleRate),ctx.sampleRate);ab.getChannelData(0).set(singSamples(f,dur,snd,ctx.sampleRate,m,m>=60));cache.set(k,ab)}
+    const s=ctx.createBufferSource();s.buffer=ab;s.connect(out);s.start(t);return}
+  if(snd==='piano'){[1,2,3,4].forEach((h,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=f*h;o.connect(g);g.connect(out);const a=[0.5,0.25,0.12,0.06][i];
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(a,t+0.005);g.gain.exponentialRampToValueAtTime(0.001,t+dur*(1-i*0.18));o.start(t);o.stop(t+dur)});return}
+  const o=ctx.createOscillator(),g=ctx.createGain();o.type='triangle';o.frequency.value=f;o.connect(g);g.connect(out);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.4,t+0.05);g.gain.setValueAtTime(0.4,t+dur-0.2);g.gain.linearRampToValueAtTime(0,t+dur);o.start(t);o.stop(t+dur);
+}
+function beeps(list,gap,vol){audio();const t=ctx.currentTime;list.forEach((m,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),s=t+i*gap;o.type='triangle';o.frequency.value=m2f(m);o.connect(g);g.connect(master);g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(vol,s+0.01);g.gain.exponentialRampToValueAtTime(0.001,s+gap*2);o.start(s);o.stop(s+gap*2.1)})}
+const wait=s=>new Promise(r=>setTimeout(r,s*1000));
+
+// ---------- settings ----------
+const SET=['level','range','sound'];
+try{const sv=JSON.parse(localStorage.getItem('earquiz:set')||'{}');for(const k of SET)if(sv[k]&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.sol!=null)$('sol').checked=sv.sol;if(sv.auto!=null)$('auto').checked=sv.auto}catch(e){}
+const save=()=>{try{const sv={sol:$('sol').checked,auto:$('auto').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('earquiz:set',JSON.stringify(sv))}catch(e){}};
+for(const k of [...SET,'sol','auto'])$(k).addEventListener('change',()=>{save();if(k!=='sound'&&k!=='auto')newQ(false);else if(k==='sol')draw()});
+$('setBtn').onclick=()=>{const h=$('settings').hidden;$('settings').hidden=!h;$('setBtn').textContent=h?'Hide settings':'Settings'};
+
+// ---------- quiz ----------
+let Q=null,score=0,streak=0,best=0,tries=0;
+try{best=+localStorage.getItem('earquiz:best:'+$('level').value)||0}catch(e){}
+function pool(){const [a,b]=$('range').value.split(',').map(Number),lv=+$('level').value,out=[];for(let m=a;m<=b;m++)if(lv===3||NAT.includes(pc(m)))out.push(m);return out}
+function makeQ(){
+  const lv=+$('level').value,P=pool(),n=[3,4,5,5][lv],gap=[7,3,1,1][lv];
+  for(let tries=0;tries<200;tries++){
+    const ch=[];const shuffled=[...P].sort(()=>Math.random()-0.5);
+    if(lv>=2){ // neighbouring notes: a run of n consecutive pool notes
+      const st=Math.floor(Math.random()*(P.length-n+1));ch.push(...P.slice(st,st+n));
+    }else for(const m of shuffled){if(ch.every(c=>Math.abs(c-m)>=gap))ch.push(m);if(ch.length===n)break}
+    if(ch.length===n){ch.sort((x,y)=>x-y);return {choices:ch,ans:ch[Math.floor(Math.random()*n)],done:false,wrong:new Set()}}
+  }
+}
+function draw(){
+  const L=$('ladder');L.querySelectorAll('.rung').forEach(e=>e.remove());if(!Q)return;
+  const [a,b]=$('range').value.split(',').map(Number),lo=Math.min(a,...Q.choices)-1,hi=Math.max(b,...Q.choices)+1;
+  // place by pitch, but keep rungs from overlapping
+  const H=L.clientHeight,pad=40,ys=Q.choices.map(m=>pad+(1-(m-lo)/(hi-lo))*(H-2*pad));
+  for(let i=ys.length-2;i>=0;i--)if(ys[i]-ys[i+1]<60)ys[i]=ys[i+1]+60;
+  const over=ys[0]-(H-pad);if(over>0)for(let i=0;i<ys.length;i++)ys[i]-=over;
+  for(let i=ys.length-1;i>0;i--)if(ys[i-1]-ys[i]<60)ys[i]=ys[i-1]-60;
+  Q.choices.forEach((m,i)=>{const r=document.createElement('button');r.className='rung';r.style.top=ys[i]+'px';r.dataset.m=m;
+    const bb=document.createElement('b');bb.textContent=name(m);r.appendChild(bb);if($('sol').checked){const s=document.createElement('small');s.textContent=SOL[pc(m)];r.appendChild(s)}
+    if(Q.wrong.has(m))r.classList.add('wrong');if(Q.done&&m===Q.ans)r.classList.add('right');
+    r.onclick=()=>answer(m);L.appendChild(r)});
+}
+new ResizeObserver(()=>draw()).observe($('ladder'));
+function stats(){$('sScore').textContent=score;$('sStreak').textContent=streak;$('sBest').textContent=best}
+async function newQ(autoplay=true){Q=makeQ();draw();$('msg').textContent='Which note was it?';$('playBtn').textContent='Play again';if(autoplay){await wait(0.15);play(Q.ans)}}
+async function answer(m){
+  if(!Q||Q.done)return;
+  if(m===Q.ans){
+    Q.done=true;tries++;if(Q.wrong.size===0){score++;streak++;if(streak>best){best=streak;try{localStorage.setItem('earquiz:best:'+$('level').value,best)}catch(e){}}}
+    stats();draw();beeps([72,76,79],0.09,0.2);$('msg').textContent=Q.wrong.size?`Yes, it was ${name(m)}.`:['Right!','Nice ear!','Exactly!','Spot on!'][Math.floor(Math.random()*4)];
+    if($('auto').checked){await wait(1.3);if(Q&&Q.done)newQ()}else $('playBtn').textContent='Next note';
+  }else{
+    Q.wrong.add(m);streak=0;stats();draw();
+    $('msg').textContent=`Not ${name(m)}. The note was ${m>Q.ans?'lower':'higher'}. Listen: yours, then the real one.`;
+    play(m,1.0);await wait(1.2);play(Q.ans,1.2);
+  }
+}
+$('playBtn').onclick=()=>{audio();if(!Q||(Q.done))newQ();else play(Q.ans)};
+stats();
+}
+</script>
+</body>
+</html>
