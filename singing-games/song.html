@@ -79,7 +79,7 @@ select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--l
         <label>Show ahead <select id="ahead"><option value="0">Only what was sung</option><option value="4" selected>Next 4 seconds too</option></select></label>
       </div>
     </div>
-    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. Bluetooth headphones on Android: connect them after you turn on the mic. Teal means you're on the singer's note, coral too high, blue too low (any octave counts). Your voice is kept for each song: sing a part again to replace it, and a faded line ahead shows your last take.</p>
+    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. The phone's own mic is used, so Bluetooth headphones keep playing the song. Teal means you're on the singer's note, coral too high, blue too low (any octave counts). Your voice is kept for each song: sing a part again to replace it, and a faded line ahead shows your last take.</p>
     <p class="note">The line is worked out from the whole song, so in loud instrumental parts it can sometimes follow an instrument instead of the singer.</p>
   </div>
 </main>
@@ -277,9 +277,11 @@ function judge(m,t){const r=P&&P[Math.floor(t/HOP)];if(r==null||isNaN(r))return 
 $('micBtn').onclick=async()=>{
   if(mic){mic.stream.getTracks().forEach(x=>x.stop());mic.ac.close();mic=null;$('micBtn').textContent='Mic: sing along';$('youBox').hidden=true;$('micNote').hidden=true;return}
   try{
-    let devs=[];try{devs=await navigator.mediaDevices.enumerateDevices()}catch(e){}
-    const own=devs.find(d=>d.kind==='audioinput'&&/bottom|built-?in|phone|internal/i.test(d.label));
-    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false,...(own?{deviceId:{exact:own.deviceId}}:{})}});
+    // Use the phone's own mic and no echo cancellation: otherwise Android switches Bluetooth headphones to "call mode" and the song stops playing in them
+    const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const pickOwn=async()=>{try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput'&&x.label);const own=d.find(x=>!BT.test(x.label)&&x.deviceId!=='default'&&x.deviceId!=='communications');return d.some(x=>BT.test(x.label))&&own?own.deviceId:null}catch(e){return null}};
+    let id=await pickOwn(),stream=await navigator.mediaDevices.getUserMedia(cons(id));
+    if(!id){const id2=await pickOwn();if(id2){stream.getTracks().forEach(x=>x.stop());stream=await navigator.mediaDevices.getUserMedia(cons(id2))}}
     const ac=new (window.AudioContext||window.webkitAudioContext)(),src=ac.createMediaStreamSource(stream),an=ac.createAnalyser();an.fftSize=2048;src.connect(an);
     mic={stream,ac,an,buf:new Float32Array(2048)};$('micBtn').textContent='Mic off';$('youBox').hidden=false;$('micNote').hidden=false;
   }catch(e){$('status').textContent='The mic is blocked. Allow the microphone for this site in Chrome and try again.';}
