@@ -202,7 +202,7 @@ footer .hand { font-size: 30px; color: var(--ink); display: block; }
   background: linear-gradient(135deg, #fff 0%, #fff7e6 100%); border: 1px solid var(--line);
 }
 .about img {
-  width: 220px; height: 220px; object-fit: cover; object-position: center 30%; border-radius: 50%;
+  width: 220px; height: 220px; object-fit: cover; object-position: center; border-radius: 50%;
   border: 6px solid #fff; box-shadow: 0 0 0 3px #e0b04a, var(--shadow); transform: rotate(-2deg);
 }
 .about h2 { margin: 0; font-size: 46px; line-height: 1; color: #e0862a; }
