@@ -26,7 +26,7 @@ button:focus-visible,.btn:focus-within{outline:3px solid var(--lo);outline-offse
 .empty{color:var(--mute);margin:4px 0}
 #addRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 #file{display:none}
-#prog{height:6px;border-radius:3px;background:#33141f;overflow:hidden;display:none;margin-top:8px}#prog i{display:block;height:100%;width:0;background:var(--gold)}
+#prog{height:8px;border-radius:3px;background:#33141f;overflow:hidden;display:none;margin-top:8px}#prog i{display:block;height:100%;width:0;background:var(--gold)}
 #now{display:flex;align-items:center;justify-content:center;gap:18px;min-height:96px}
 #nName{font-size:68px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:center}
 #nSol{font-size:26px;color:var(--mute);min-width:3em}
@@ -39,6 +39,7 @@ canvas{width:100%;height:340px;display:block;border-radius:14px;background:linea
 .opts label{display:flex;gap:6px;align-items:center}
 select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 6px}
 .note{font-size:13px;color:var(--mute)}
+.busy i{width:35%!important;animation:busy 1.1s linear infinite}@keyframes busy{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 </style>
 </head>
 <body>
@@ -155,11 +156,11 @@ $('file').onchange=async e=>{
   for(const [k,f] of files.entries()){
     const label=files.length>1?` (${k+1} of ${files.length})`:'';
     try{
-      $('status').textContent='Reading '+f.name+label+'…';$('prog').style.display='block';$('prog').firstChild.style.width='0';
+      $('status').textContent='Opening '+f.name+label+'… this can take a few seconds';$('prog').style.display='block';$('prog').classList.add('busy');$('prog').firstChild.style.width='0';
       const dup=songs.find(x=>x.name===f.name.replace(/\.[^.]+$/,'')&&x.blob&&x.blob.size===f.size);if(dup&&dup.pitch){last=dup;continue}
       const buf=await ac.decodeAudioData(await f.arrayBuffer());
       $('status').textContent='Finding the singer\'s notes'+label+'…';
-      const p=await track(buf,x=>$('prog').firstChild.style.width=(x*100)+'%');
+      $('prog').classList.remove('busy');const p=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes'+label+': '+Math.round(x*100)+'%'});
       last={id:Date.now()+'-'+k,name:f.name.replace(/\.[^.]+$/,''),blob:f,type:f.type,pitch:p,hop:HOP,dur:buf.duration,added:Date.now()};
       await putSong(last);
     }catch(err){$('status').textContent='Could not read '+f.name+'. Try an mp3 or m4a file.';console.error(err);continue}
@@ -171,9 +172,9 @@ $('file').onchange=async e=>{
 // ---------- player ----------
 const au=$('au'),cv=$('cv'),cx=cv.getContext('2d');
 async function open(s){
-  if(!s.pitch){stop();$('status').textContent='Finding the singer\'s notes in '+s.name+'…';$('prog').style.display='block';
+  if(!s.pitch){stop();$('status').textContent='Opening '+s.name+'…';$('prog').style.display='block';$('prog').classList.add('busy');
     try{const ac=new (window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(await s.blob.arrayBuffer());ac.close();
-      s.pitch=await track(buf,x=>$('prog').firstChild.style.width=(x*100)+'%');s.hop=HOP;s.dur=buf.duration;await putSong(s)}
+      $('prog').classList.remove('busy');s.pitch=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes: '+Math.round(x*100)+'%'});s.hop=HOP;s.dur=buf.duration;await putSong(s)}
     catch(e){$('status').textContent='Could not read '+s.name+'.';$('prog').style.display='none';return}
     $('prog').style.display='none';$('status').textContent='Ready. Songs stay on this phone only.'}
   stop();cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);NOTES=notesOf(P);

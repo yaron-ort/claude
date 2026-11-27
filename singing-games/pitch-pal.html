@@ -67,10 +67,11 @@ label.chk input{width:20px;height:20px;accent-color:var(--on)}
 ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:14px;color:var(--mute)}
 .legend i{display:inline-block;width:22px;height:8px;border-radius:4px;margin-right:6px;vertical-align:middle}
-.prog{height:6px;border-radius:3px;background:var(--bg);overflow:hidden;margin-top:8px}.prog i{display:block;height:100%;width:0;background:var(--on)}
+.prog{height:8px;border-radius:3px;background:var(--bg);overflow:hidden;margin-top:8px}.prog i{display:block;height:100%;width:0;background:var(--on)}
 [hidden]{display:none!important}
 @media(max-width:760px){.stage{grid-template-columns:minmax(0,1fr)}.meter{flex-direction:row;flex-wrap:wrap;justify-content:space-around}.gauge{width:150px;height:30px;background:linear-gradient(90deg,var(--lo),var(--bg) 42%,var(--bg) 58%,var(--hi))}.gauge::after{left:calc(50% - 1px);right:auto;width:2px;top:-6px;bottom:-6px;height:auto}.needle{top:-8px!important;bottom:-8px;height:auto;width:12px;left:calc(50% - 6px);right:auto;transition:left .08s linear}.grid{grid-template-columns:minmax(0,1fr)}}
 @media(prefers-reduced-motion:reduce){.needle,.track i{transition:none}}
+.prog.busy i{width:35%!important;animation:busy 1.1s linear infinite}@keyframes busy{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 </style>
 </head>
 <body>
@@ -102,7 +103,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
   </div>
 
   <div class="bar">
-    <label class="file">Load a song file<input type="file" id="songFile" accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.flac,.webm"></label>
+    <label class="file"><span id="loadTxt">Load a song file</span><input type="file" id="songFile" accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.flac,.webm"></label>
     <select id="mySongs" aria-label="My songs" hidden><option value="">My songs…</option></select>
     <select id="exSel" aria-label="Practice exercise">
       <option value="">…or a practice exercise</option>
@@ -406,15 +407,19 @@ sdbOpen().then(async()=>{await listSongs();let id=null;try{id=localStorage.getIt
 $('songFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadSongFile(f,null)};
 async function loadSongFile(f,savedId){
   ensureCtx();$('exSel').value='';
-  info(`Listening for the singer in <b>${f.name.replace(/[<>&"']/g,'')}</b>… <div class="prog"><i id="pg"></i></div>`);
+  const nm=f.name.replace(/[<>&"']/g,'').replace(/\.[^.]+$/,'');
+  info(`<span id="pgT">Opening <b>${nm}</b>… this can take a few seconds</span><div class="prog busy" id="pgB"><i id="pg"></i></div>`);$('loadTxt').textContent='Opening song…';const emp=$('empty'),empWas=emp.innerHTML,empHid=emp.hidden;const showP=t=>{emp.hidden=false;emp.style.display='';emp.innerHTML=`<div><b>${t}</b>${nm}</div>`};showP('Opening the song…');
   try{
     const buf=await ctx.decodeAudioData(await f.arrayBuffer());
-    const r=await track(buf,0.25,p=>{const g=$('pg');if(g)g.style.width=(p*100)+'%'});
+    {const b=$('pgB');if(b)b.classList.remove('busy')}
+    const r=await track(buf,0.25,p=>{const g=$('pg');if(g)g.style.width=(p*100)+'%';const t=$('pgT');if(t)t.innerHTML=`Finding the singer's notes in <b>${nm}</b>: ${Math.round(p*100)}%`;$('loadTxt').textContent='Loading song… '+Math.round(p*100)+'%';showP('Finding the singer\'s notes: '+Math.round(p*100)+'%')});
+    emp.innerHTML=empWas;
     const voiced=r.filter(x=>!isNaN(x)).length/r.length;
     loaded(buf,r,f.name.replace(/\.[^.]+$/,''),f);
     info(voiced<0.15?`I could only find a clear singing voice in ${Math.round(voiced*100)}% of this song. The backing music may be too busy: try a vocals-only or acoustic version for better feedback.`:`Ready. I found the singer's voice in about ${Math.round(voiced*100)}% of the song. Press Play and sing along.`);
     curSongId=savedId||await saveSong(f,buf.duration);await listSongs(curSongId);try{localStorage.setItem('songnotes:last',curSongId)}catch(e){}
-  }catch(err){info('Sorry, this file could not be read as audio. Try an MP3, M4A or WAV file.')}
+  }catch(err){emp.innerHTML=empWas;emp.hidden=empHid;info('Sorry, this file could not be read as audio. Try an MP3, M4A or WAV file.')}
+  $('loadTxt').textContent='Load a song file';
 }
 async function loadEx(){
   const i=$('exSel').value;if(i==='')return;ensureCtx();
