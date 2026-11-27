@@ -100,8 +100,6 @@ def price_text(b):
 
 
 def card(b):
-    lowest = min(p["amount"] for p in b["prices"])
-    from_ = "החל מ־" if len(b["prices"]) > 1 else ""
     return f"""<a class="card" href="{b['slug']}.html" style="--c:{b['color']}">
   <div class="flip"><div class="flip-inner">
     <div class="face front"><img src="{ver('img/' + b['slug'] + '-front.jpg')}" alt="הכריכה של {e(b['title'])}" loading="lazy"></div>
@@ -109,7 +107,7 @@ def card(b):
   </div></div>
   <h3 class="hand">{e(b['title'])}</h3>
   <p>{e(b['tagline'])}</p>
-  <span class="more">PDF חינם · מודפס {from_}{lowest} {CUR}</span>
+  <span class="more">לכריכות ולהורדה ←</span>
 </a>"""
 
 
@@ -122,6 +120,10 @@ def index():
   <h1 class="hand"><span>פירות</span> <span>העט</span></h1>
   <p>חמישה ספרים קטנים שכתבתי וציירתי בעצמי, על חיוך, על נחת, על שלום ועל מסע אחד גדול. אפשר להוריד כל אחד מהם חינם, או להזמין עותק מודפס.</p>
   <span class="pill">✏️ נכתב ואויר ביד על ידי {e(AUTHOR_FULL)}</span>
+</section>
+<section class="notice">
+  <div class="notice-item"><span class="ico">📖</span><div><b>לקרוא חינם</b><span>כל הספרים פתוחים לקריאה ולהורדה כקובץ PDF, בלי הרשמה ובלי תשלום.</span></div></div>
+  <div class="notice-item"><span class="ico">📚</span><div><b>לקנות עותק מודפס</b><span>רוצים את הספר ביד, לעצמכם או במתנה? כתבו לי <a href="{wa_link(f'היי {AUTHOR}, אשמח להזמין עותק מודפס של אחד הספרים 🙂')}" target="_blank" rel="noopener">בוואטסאפ</a> ואדאג לעותק.</span></div></div>
 </section>
 <section class="shelf" aria-label="הספרים">
 {cards}
