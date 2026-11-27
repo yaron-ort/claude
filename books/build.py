@@ -113,7 +113,7 @@ def card(b):
 
 def index():
     cards = "\n".join(card(b) for b in BOOKS)
-    out = head(f"{SITE} | הספרים של {AUTHOR_FULL}", "חמישה ספרים קטנים מהלב. להורדה חינם או לעותק מודפס.", "img/lihyot-melech-front.jpg")
+    out = head(f"{SITE} | הספרים של {AUTHOR_FULL}", "חמישה ספרים קטנים מהלב. להורדה חינם או לעותק מודפס.", "img/benachat-front.jpg")
     out += topbar()
     out += f"""<main class="wrap">
 <section class="hero">
