@@ -68,6 +68,7 @@ select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--l
         <button id="playBtn" class="primary" style="min-width:90px">Play</button>
         <button id="backBtn" aria-label="Back 5 seconds">−5s</button>
         <button id="micBtn">Mic: sing along</button>
+        <button id="clearBtn">Clear my voice</button>
         <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
         <span id="time">0:00 / 0:00</span>
       </div>
@@ -78,7 +79,7 @@ select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--l
         <label>Show ahead <select id="ahead"><option value="0">Only what was sung</option><option value="4" selected>Next 4 seconds too</option></select></label>
       </div>
     </div>
-    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. Bluetooth headphones on Android: connect them after you turn on the mic. Teal means you're on the singer's note, coral too high, blue too low (any octave counts).</p>
+    <p class="note" id="micNote" hidden>Use headphones, so the mic hears only you. Bluetooth headphones on Android: connect them after you turn on the mic. Teal means you're on the singer's note, coral too high, blue too low (any octave counts). Your voice is kept for each song: sing a part again to replace it, and a faded line ahead shows your last take.</p>
     <p class="note">The line is worked out from the whole song, so in loud instrumental parts it can sometimes follow an instrument instead of the singer.</p>
   </div>
 </main>
@@ -205,7 +206,7 @@ async function open(s){
       $('prog').classList.remove('busy');s.pitch=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes: '+Math.round(x*100)+'%'});s.hop=HOP;s.ver=2;s.dur=buf.duration;await putSong(s)}
     catch(e){$('status').textContent='Could not read '+s.name+'.';$('prog').style.display='none';return}
     $('prog').style.display='none';$('status').textContent='Ready. Songs stay on this phone only.'}
-  stop();vc=null;cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);NOTES=notesOf(P);
+  saveTake();stop();vc=null;cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);TK=s.take&&s.take.length===P.length?Float32Array.from(s.take):new Float32Array(P.length).fill(NaN);lastF=-1;dirty=false;NOTES=notesOf(P);
   const v=[...P].filter(x=>!isNaN(x)).sort((a,b)=>a-b);
   if(v.length){lo=Math.floor(v[Math.floor(v.length*0.05)])-2;hi=Math.ceil(v[Math.floor(v.length*0.97)])+2;if(hi-lo<12){const c=(hi+lo)/2;lo=Math.floor(c-6);hi=Math.ceil(c+6)}}
   if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(new Blob([s.blob],{type:s.type||'audio/mpeg'}));au.src=url;au.playbackRate=+$('speed').value;
@@ -237,7 +238,7 @@ function show(t){
 function viewRange(t,z){
   if(z==='far')return [lo,hi];
   const half=z==='close'?6:9,f=Math.floor(t/HOP),w=[];for(let k=f-250;k<f+250;k+=3){const v=P[k];if(v!=null&&!isNaN(v))w.push(v)}
-  const tgt=w.length?w.sort((a,b)=>a-b)[w.length>>1]:(lo+hi)/2;vc=vc==null||Math.abs(vc-tgt)>12?tgt:vc+(tgt-vc)*0.05;return [vc-half,vc+half];
+  const tgt=w.length?w.sort((a,b)=>a-b)[w.length>>1]:(lo+hi)/2;vc=vc==null||au.paused||Math.abs(vc-tgt)>12?tgt:vc+(tgt-vc)*0.05;return [vc-half,vc+half];
 }
 function draw(t){
   const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
@@ -261,14 +262,15 @@ function draw(t){
     for(let f=Math.max(0,a);f<=Math.min(P.length-1,b);f++){const v=P[f];if(isNaN(v)){pen=false;continue}const X=x(f*HOP),Y=y(v);pen?cx.lineTo(X,Y):cx.moveTo(X,Y);pen=true}cx.stroke()};
   seg(f0,fn,'#f6ead9cc',3);if(ahead)seg(fn,f1,'#f6ead955',2);
   // your voice
-  cx.lineWidth=4;cx.lineCap='round';let pv=null;
-  for(const q of ME){if(q.t<t-back||q.t>t+0.05){pv=null;continue}const X=x(q.t),Y=y(q.m);
-    if(pv&&q.t-pv.t<0.15&&Math.abs(q.m-pv.m)<2){cx.strokeStyle=COL[q.c];cx.beginPath();cx.moveTo(pv.X,pv.Y);cx.lineTo(X,Y);cx.stroke()}pv={t:q.t,m:q.m,X,Y}}
+  if(TK){cx.lineCap='round';let pv=null;
+    for(let f=Math.max(0,f0);f<=Math.min(TK.length-1,f1);f++){const m=TK[f];if(isNaN(m)){pv=null;continue}const X=x(f*HOP),Y=y(m);
+      if(pv&&Math.abs(m-pv.m)<2){const r=P[f],c=isNaN(r)?'none':Math.abs(m-r)<=0.5?'on':m>r?'hi':'lo';cx.globalAlpha=f>fn?0.35:1;cx.lineWidth=f>fn?3:4;cx.strokeStyle=COL[c];cx.beginPath();cx.moveTo(pv.X,pv.Y);cx.lineTo(X,Y);cx.stroke()}pv={m,X,Y}}
+    cx.globalAlpha=1}
   cx.strokeStyle='#ffd166';cx.lineWidth=2;cx.beginPath();cx.moveTo(X0,0);cx.lineTo(X0,H);cx.stroke();
   if(!isNaN(P[fn])){cx.fillStyle='#ffd166';cx.beginPath();cx.arc(X0,y(P[fn]),7,0,7);cx.fill()}
 }
 // ---------- mic: your voice on the same graph ----------
-let mic=null,ME=[],sm=[];
+let mic=null,TK=null,lastF=-1,sm=[],dirty=false;
 const COL={on:'#34d6a6',hi:'#ff8a4c',lo:'#5cc3ff',none:'#c9a9a6'};
 function judge(m,t){const r=P&&P[Math.floor(t/HOP)];if(r==null||isNaN(r))return {c:'none',v:m};
   const v=m-12*Math.round((m-r)/12),d=v-r;return {c:Math.abs(d)<=0.5?'on':d>0?'hi':'lo',v,d}}
@@ -286,13 +288,15 @@ function listen(){
   if(!mic)return;mic.an.getFloatTimeDomainData(mic.buf);const b=mic.buf;let e=0;for(let i=0;i<b.length;i++)e+=b[i]*b[i];
   const hz=Math.sqrt(e/b.length)>0.008?yin(b,mic.ac.sampleRate,0.15,65,1100,b.length):0,t=au.currentTime;
   if(hz){sm.push(f2m(hz));if(sm.length>3)sm.shift();const m=[...sm].sort((a,c)=>a-c)[sm.length>>1],j=judge(m,t);
-    if(!au.paused)ME.push({t,m:j.v,c:j.c});
+    if(!au.paused&&TK){const f=Math.floor(t/HOP);if(f>=0&&f<TK.length){if(lastF>=0&&f>lastF&&f-lastF<6)for(let k=lastF+1;k<f;k++)TK[k]=j.v;TK[f]=j.v;lastF=f;dirty=true}}
     $('yName').textContent=$('names').value==='sol'?sol(m):nm(m);$('yName').style.color=COL[j.c];
     $('yMsg').textContent=j.c==='on'?'On the note!':j.c==='hi'?'A bit high':j.c==='lo'?'A bit low':' '}
-  else{sm=[];$('yName').textContent='–';$('yName').style.color='var(--mute)';$('yMsg').innerHTML='&nbsp;'}
-  if(ME.length&&ME[ME.length-1].t<t-60)ME=ME.filter(p=>p.t>t-20);
+  else{sm=[];lastF=-1;$('yName').textContent='–';$('yName').style.color='var(--mute)';$('yMsg').innerHTML='&nbsp;'}
 }
-au.addEventListener('seeked',()=>{ME=ME.filter(p=>p.t<au.currentTime-0.05)});
+au.addEventListener('seeked',()=>{lastF=-1});
+async function saveTake(){if(!cur||!TK||!dirty)return;dirty=false;cur.take=TK;try{await putSong(cur)}catch(e){}}
+au.addEventListener('pause',saveTake);setInterval(saveTake,10000);addEventListener('visibilitychange',()=>{if(document.hidden)saveTake()});
+$('clearBtn').onclick=async()=>{if(!cur)return;TK=new Float32Array(P.length).fill(NaN);dirty=true;await saveTake();show(au.currentTime)};
 function loop(){listen();if(cur&&(!au.paused||mic))show(au.currentTime);requestAnimationFrame(loop)}
 requestAnimationFrame(loop);addEventListener('resize',()=>cur&&show(au.currentTime));
 
