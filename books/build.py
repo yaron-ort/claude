@@ -15,6 +15,8 @@ DATA = json.load(open(os.path.join(HERE, "books.json"), encoding="utf-8"))
 BOOKS = DATA["books"]
 CUR = DATA.get("currency", "₪")
 AUTHOR = DATA.get("author", "")
+AUTHOR_FULL = DATA.get("author_full", AUTHOR)
+ABOUT = DATA.get("about", [])
 SITE = DATA.get("site_title", "")
 WA = DATA.get("whatsapp", "").strip()
 
@@ -65,7 +67,7 @@ def topbar(current=None):
     )
     return f"""<div class="wrap">
 <header class="topbar">
-  <a class="brand" href="./"><span class="hand">{e(SITE)}</span><small>הספרים של {e(AUTHOR)}</small></a>
+  <a class="brand" href="./"><span class="hand">{e(SITE)}</span><small>הספרים של {e(AUTHOR_FULL)}</small></a>
   <nav class="topnav" aria-label="הספרים">{links}</nav>
 </header>
 </div>
@@ -105,16 +107,25 @@ def card(b):
 
 def index():
     cards = "\n".join(card(b) for b in BOOKS)
-    out = head(f"{SITE} | הספרים של {AUTHOR}", "חמישה ספרים קטנים מהלב. להורדה חינם או לעותק מודפס.", "img/lihyot-melech-front.jpg")
+    out = head(f"{SITE} | הספרים של {AUTHOR_FULL}", "חמישה ספרים קטנים מהלב. להורדה חינם או לעותק מודפס.", "img/lihyot-melech-front.jpg")
     out += topbar()
     out += f"""<main class="wrap">
 <section class="hero">
   <h1 class="hand"><span>פירות</span> <span>העט</span></h1>
   <p>חמישה ספרים קטנים שכתבתי וציירתי בעצמי, על חיוך, על נחת, על שלום ועל מסע אחד גדול. אפשר להוריד כל אחד מהם חינם, או להזמין עותק מודפס.</p>
-  <span class="pill">✏️ נכתב ואויר ביד על ידי {e(AUTHOR)}</span>
+  <span class="pill">✏️ נכתב ואויר ביד על ידי {e(AUTHOR_FULL)}</span>
 </section>
 <section class="shelf" aria-label="הספרים">
 {cards}
+</section>
+<section class="about" id="about">
+  <img src="img/author.jpg" alt="{e(AUTHOR_FULL)}" loading="lazy">
+  <div>
+    <h2 class="hand">על הכותב</h2>
+    <h3>{e(AUTHOR_FULL)}</h3>
+    {"".join(f"<p>{e(p)}</p>" for p in ABOUT)}
+    <a class="btn btn-whatsapp" href="{wa_link(f'היי {AUTHOR}, הגעתי מאתר הספרים 🙂')}" target="_blank" rel="noopener">{WA_ICON} לכתוב לירון</a>
+  </div>
 </section>
 <section class="how">
   <h2 class="hand">איך זה עובד?</h2>
