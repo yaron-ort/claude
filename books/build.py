@@ -22,6 +22,14 @@ WA = DATA.get("whatsapp", "").strip()
 
 e = html.escape
 
+
+def ver(path):
+    """Short content hash, appended as ?v= so browsers fetch changed files right away."""
+    import hashlib
+    with open(os.path.join(HERE, path), "rb") as f:
+        return f"{path}?v={hashlib.md5(f.read()).hexdigest()[:8]}"
+
+
 WA_ICON = (
     '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 '
     "2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 "
@@ -54,7 +62,7 @@ def head(title, desc, image=None):
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@700&family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="{ver('assets/style.css')}">
 </head>
 <body>
 """
@@ -96,8 +104,8 @@ def card(b):
     from_ = "החל מ־" if len(b["prices"]) > 1 else ""
     return f"""<a class="card" href="{b['slug']}.html" style="--c:{b['color']}">
   <div class="flip"><div class="flip-inner">
-    <div class="face front"><img src="img/{b['slug']}-front.jpg" alt="הכריכה של {e(b['title'])}" loading="lazy"></div>
-    <div class="face back"><img src="img/{b['slug']}-back.jpg" alt="" loading="lazy"></div>
+    <div class="face front"><img src="{ver('img/' + b['slug'] + '-front.jpg')}" alt="הכריכה של {e(b['title'])}" loading="lazy"></div>
+    <div class="face back"><img src="{ver('img/' + b['slug'] + '-back.jpg')}" alt="" loading="lazy"></div>
   </div></div>
   <h3 class="hand">{e(b['title'])}</h3>
   <p>{e(b['tagline'])}</p>
@@ -119,7 +127,7 @@ def index():
 {cards}
 </section>
 <section class="about" id="about">
-  <img src="img/author.jpg" alt="{e(AUTHOR_FULL)}" loading="lazy">
+  <img src="{ver('img/author.jpg')}" alt="{e(AUTHOR_FULL)}" loading="lazy">
   <div>
     <h2 class="hand">על הכותב</h2>
     <h3>{e(AUTHOR_FULL)}</h3>
@@ -143,7 +151,7 @@ def book_page(b):
     others = "\n".join(card(o) for o in BOOKS if o is not b)
     blurb = "".join(f"<p>{e(p)}</p>" for p in b["blurb"])
     if b.get("pdf"):
-        dl = f"""<a class="btn btn-primary" href="{b['pdf']}" download>{DL_ICON} להורדת ה־PDF</a>"""
+        dl = f"""<a class="btn btn-primary" href="{ver(b['pdf'])}" download>{DL_ICON} להורדת ה־PDF</a>"""
         dl_note = "הספר המלא, כולל הכריכות. חינם."
     else:
         dl = '<span class="btn btn-ghost">ה־PDF יעלה בקרוב</span>'
@@ -162,8 +170,8 @@ def book_page(b):
 <div class="crumbs"><a href="./">כל הספרים</a> / {e(b['title'])}</div>
 <div class="book-grid">
   <div class="covers">
-    <figure><button type="button" data-full="img/{b['slug']}-front.jpg" aria-label="הגדלת הכריכה הקדמית"><img src="img/{b['slug']}-front.jpg" alt="הכריכה הקדמית של {e(b['title'])}"></button><figcaption>כריכה קדמית</figcaption></figure>
-    <figure><button type="button" data-full="img/{b['slug']}-back.jpg" aria-label="הגדלת הכריכה האחורית"><img src="img/{b['slug']}-back.jpg" alt="הכריכה האחורית של {e(b['title'])}"></button><figcaption>כריכה אחורית</figcaption></figure>
+    <figure><button type="button" data-full="img/{b['slug']}-front.jpg" aria-label="הגדלת הכריכה הקדמית"><img src="{ver('img/' + b['slug'] + '-front.jpg')}" alt="הכריכה הקדמית של {e(b['title'])}"></button><figcaption>כריכה קדמית</figcaption></figure>
+    <figure><button type="button" data-full="img/{b['slug']}-back.jpg" aria-label="הגדלת הכריכה האחורית"><img src="{ver('img/' + b['slug'] + '-back.jpg')}" alt="הכריכה האחורית של {e(b['title'])}"></button><figcaption>כריכה אחורית</figcaption></figure>
   </div>
   <div>
     <h1 class="hand">{e(b['title'])}</h1>
