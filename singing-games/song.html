@@ -91,6 +91,28 @@ function yin(buf,sr,thr,fmin,fmax,n){
   let tau=-1;for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
   if(tau<0)return 0;const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;return sr/(den?tau+0.5*(a-c)/den:tau);
 }
+// YIN that also reports how clear the pitch is (lower d = clearer), so faint, fading notes can be kept when they continue a note
+function yinD(buf,sr,thr,fmin,fmax,n){
+  const W=n>>1,tmin=Math.max(2,Math.floor(sr/fmax)),tmax=Math.min(W-1,Math.floor(sr/fmin)),d=new Float32Array(tmax+2);
+  for(let tau=1;tau<=tmax+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
+  let run=0;d[0]=1;for(let tau=1;tau<=tmax+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
+  let tau=-1;for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0){let b=tmin;for(let t=tmin+1;t<=tmax;t++)if(d[t]<d[b])b=t;tau=b}
+  if(tau<1)return [0,1];const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;return [sr/(den?tau+0.5*(a-c)/den:tau),b];
+}
+// keep a held note going: faint or wobbly frames next to a clear note, at about the same pitch, belong to it
+function sustain(out,cand,dv,rr,peak){
+  const n=out.length,near=(c,p)=>{if(isNaN(c))return NaN;for(const k of [0,-12,12])if(Math.abs(c+k-p)<1.3)return c+k;return NaN};
+  for(const dir of [1,-1]){
+    for(let s=0;s<n;s++){const f=dir>0?s:n-1-s,g=f-dir;if(g<0||g>=n||!isNaN(out[f])||isNaN(out[g]))continue;
+      if(dv[f]<0.6&&rr[f]>peak*0.006){const v=near(cand[f],out[g]);if(!isNaN(v))out[f]=v}}
+  }
+  for(let i=1;i<n;){ // bridge short gaps (up to 0.24 s) inside a held note
+    if(!isNaN(out[i])||isNaN(out[i-1])){i++;continue}let j=i;while(j<n&&isNaN(out[j]))j++;
+    if(j<n&&j-i<=12&&Math.abs(out[j]-out[i-1])<1)for(let k=i;k<j;k++)out[k]=out[i-1]+(out[j]-out[i-1])*(k-i+1)/(j-i+1);
+    i=j+1}
+  return out;
+}
 async function track(buffer,onProg){
   const SR=16000,len=Math.ceil(buffer.duration*SR),oc=new OfflineAudioContext(1,len,SR);
   const s=oc.createBufferSource();s.buffer=buffer;
@@ -99,13 +121,13 @@ async function track(buffer,onProg){
   s.connect(hp);hp.connect(lp);lp.connect(oc.destination);s.start();
   const x=(await oc.startRendering()).getChannelData(0),N=1024,hop=SR*HOP,frames=Math.max(0,Math.floor((x.length-N)/hop));
   let peak=0;for(let i=0;i<x.length;i+=50)peak=Math.max(peak,Math.abs(x[i]));
-  const out=new Float32Array(frames).fill(NaN);
+  const out=new Float32Array(frames).fill(NaN),cand=new Float32Array(frames).fill(NaN),dv=new Float32Array(frames).fill(1),rr=new Float32Array(frames),thr=+(new URLSearchParams(location.search).get('thr')||0.32);
   for(let f=0;f<frames;f++){
-    const w=x.subarray(f*hop,f*hop+N);let e=0;for(let i=0;i<N;i++)e+=w[i]*w[i];
-    if(Math.sqrt(e/N)>peak*0.03){const hz=yin(w,SR,+(new URLSearchParams(location.search).get('thr')||0.32),70,1100,N);if(hz)out[f]=f2m(hz)}
+    const w=x.subarray(f*hop,f*hop+N);let e=0;for(let i=0;i<N;i++)e+=w[i]*w[i];rr[f]=Math.sqrt(e/N);
+    if(rr[f]>peak*0.006){const [hz,d]=yinD(w,SR,thr,70,1100,N);if(hz){cand[f]=f2m(hz);dv[f]=d;if(d<thr&&rr[f]>peak*0.03)out[f]=cand[f]}}
     if(f%300===0){onProg(f/frames);await new Promise(r=>setTimeout(r,0))}
   }
-  return clean(out);
+  return sustain(clean(out),cand,dv,rr,peak);
 }
 function clean(a){
   const n=a.length,m=new Float32Array(n).fill(NaN);
@@ -118,8 +140,8 @@ function clean(a){
 function notesOf(p){
   const out=[];let i=0;const n=p.length;
   while(i<n){if(isNaN(p[i])){i++;continue}const r=Math.round(p[i]);let j=i;
-    while(j<n&&!isNaN(p[j])&&Math.abs(p[j]-r)<0.75)j++;
-    if(j-i>=5){const last=out[out.length-1];if(last&&last.m===r&&i-last.e<=3)last.e=j;else out.push({s:i,e:j,m:r})}
+    while(j<n&&!isNaN(p[j])&&Math.abs(p[j]-r)<0.95)j++;
+    if(j-i>=5){const last=out[out.length-1];if(last&&last.m===r&&i-last.e<=8)last.e=j;else out.push({s:i,e:j,m:r})}
     i=Math.max(j,i+1)}
   return out;
 }
@@ -157,11 +179,11 @@ $('file').onchange=async e=>{
     const label=files.length>1?` (${k+1} of ${files.length})`:'';
     try{
       $('status').textContent='Opening '+f.name+label+'… this can take a few seconds';$('prog').style.display='block';$('prog').classList.add('busy');$('prog').firstChild.style.width='0';
-      const dup=songs.find(x=>x.name===f.name.replace(/\.[^.]+$/,'')&&x.blob&&x.blob.size===f.size);if(dup&&dup.pitch){last=dup;continue}
+      const dup=songs.find(x=>x.name===f.name.replace(/\.[^.]+$/,'')&&x.blob&&x.blob.size===f.size);if(dup&&dup.pitch&&dup.ver===2){last=dup;continue}
       const buf=await ac.decodeAudioData(await f.arrayBuffer());
       $('status').textContent='Finding the singer\'s notes'+label+'…';
       $('prog').classList.remove('busy');const p=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes'+label+': '+Math.round(x*100)+'%'});
-      last={id:Date.now()+'-'+k,name:f.name.replace(/\.[^.]+$/,''),blob:f,type:f.type,pitch:p,hop:HOP,dur:buf.duration,added:Date.now()};
+      last={id:Date.now()+'-'+k,name:f.name.replace(/\.[^.]+$/,''),blob:f,type:f.type,pitch:p,ver:2,hop:HOP,dur:buf.duration,added:Date.now()};
       await putSong(last);
     }catch(err){$('status').textContent='Could not read '+f.name+'. Try an mp3 or m4a file.';console.error(err);continue}
   }
@@ -172,9 +194,9 @@ $('file').onchange=async e=>{
 // ---------- player ----------
 const au=$('au'),cv=$('cv'),cx=cv.getContext('2d');
 async function open(s){
-  if(!s.pitch){stop();$('status').textContent='Opening '+s.name+'…';$('prog').style.display='block';$('prog').classList.add('busy');
+  if(!s.pitch||s.ver!==2){stop();$('status').textContent='Opening '+s.name+'…';$('prog').style.display='block';$('prog').classList.add('busy');
     try{const ac=new (window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(await s.blob.arrayBuffer());ac.close();
-      $('prog').classList.remove('busy');s.pitch=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes: '+Math.round(x*100)+'%'});s.hop=HOP;s.dur=buf.duration;await putSong(s)}
+      $('prog').classList.remove('busy');s.pitch=await track(buf,x=>{$('prog').firstChild.style.width=(x*100)+'%';$('status').textContent='Finding the singer\'s notes: '+Math.round(x*100)+'%'});s.hop=HOP;s.ver=2;s.dur=buf.duration;await putSong(s)}
     catch(e){$('status').textContent='Could not read '+s.name+'.';$('prog').style.display='none';return}
     $('prog').style.display='none';$('status').textContent='Ready. Songs stay on this phone only.'}
   stop();cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);NOTES=notesOf(P);

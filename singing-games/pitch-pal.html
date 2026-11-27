@@ -76,7 +76,7 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 12</span></h1>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 13</span></h1>
   <p class="sub"><a href="./" style="color:var(--on);font-weight:700">All singing games</a> · <a href="song.html" style="color:#ffd166;font-weight:700">Song Notes</a><br>Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
@@ -198,6 +198,28 @@ function yin(buf,sr,thr,fmin=65,fmax=1100,n=buf.length){
 const rmsOf=(b,n)=>{let s=0;for(let i=0;i<n;i++)s+=b[i]*b[i];return Math.sqrt(s/n)};
 
 // offline pitch track of a whole buffer, resampled to 16 kHz and band-limited to the voice range
+// YIN that also reports how clear the pitch is (lower d = clearer), so faint, fading notes can be kept when they continue a note
+function yinD(buf,sr,thr,fmin,fmax,n){
+  const W=n>>1,tmin=Math.max(2,Math.floor(sr/fmax)),tmax=Math.min(W-1,Math.floor(sr/fmin)),d=new Float32Array(tmax+2);
+  for(let tau=1;tau<=tmax+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
+  let run=0;d[0]=1;for(let tau=1;tau<=tmax+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
+  let tau=-1;for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0){let b=tmin;for(let t=tmin+1;t<=tmax;t++)if(d[t]<d[b])b=t;tau=b}
+  if(tau<1)return [0,1];const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;return [sr/(den?tau+0.5*(a-c)/den:tau),b];
+}
+// keep a held note going: faint or wobbly frames next to a clear note, at about the same pitch, belong to it
+function sustain(out,cand,dv,rr,peak){
+  const n=out.length,near=(c,p)=>{if(isNaN(c))return NaN;for(const k of [0,-12,12])if(Math.abs(c+k-p)<1.3)return c+k;return NaN};
+  for(const dir of [1,-1]){
+    for(let s=0;s<n;s++){const f=dir>0?s:n-1-s,g=f-dir;if(g<0||g>=n||!isNaN(out[f])||isNaN(out[g]))continue;
+      if(dv[f]<0.6&&rr[f]>peak*0.006){const v=near(cand[f],out[g]);if(!isNaN(v))out[f]=v}}
+  }
+  for(let i=1;i<n;){ // bridge short gaps (up to 0.24 s) inside a held note
+    if(!isNaN(out[i])||isNaN(out[i-1])){i++;continue}let j=i;while(j<n&&isNaN(out[j]))j++;
+    if(j<n&&j-i<=12&&Math.abs(out[j]-out[i-1])<1)for(let k=i;k<j;k++)out[k]=out[i-1]+(out[j]-out[i-1])*(k-i+1)/(j-i+1);
+    i=j+1}
+  return out;
+}
 async function track(buffer,thr,onProg){
   const SR=16000,len=Math.ceil(buffer.duration*SR);
   const oc=new OfflineAudioContext(1,len,SR);
@@ -208,13 +230,13 @@ async function track(buffer,thr,onProg){
   const x=(await oc.startRendering()).getChannelData(0);
   const N=1024,hop=SR*HOP,frames=Math.max(0,Math.floor((x.length-N)/hop));
   let peak=0;for(let i=0;i<x.length;i+=50)peak=Math.max(peak,Math.abs(x[i]));
-  const out=new Float32Array(frames).fill(NaN);
+  const out=new Float32Array(frames).fill(NaN),cand=new Float32Array(frames).fill(NaN),dv=new Float32Array(frames).fill(1),rr=new Float32Array(frames);
   for(let f=0;f<frames;f++){
-    const w=x.subarray(f*hop,f*hop+N);
-    if(rmsOf(w,N)>peak*0.03){const hz=yin(w,SR,thr,65,1100,N);if(hz)out[f]=f2m(hz)}
+    const w=x.subarray(f*hop,f*hop+N);rr[f]=rmsOf(w,N);
+    if(rr[f]>peak*0.006){const [hz,d]=yinD(w,SR,thr,65,1100,N);if(hz){cand[f]=f2m(hz);dv[f]=d;if(d<thr&&rr[f]>peak*0.03)out[f]=cand[f]}}
     if(f%250===0){onProg&&onProg(f/frames);await new Promise(r=>setTimeout(r,0))}
   }
-  return clean(out);
+  return sustain(clean(out),cand,dv,rr,peak);
 }
 function clean(a){
   const n=a.length,m=new Float32Array(n).fill(NaN);
