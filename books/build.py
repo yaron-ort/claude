@@ -118,11 +118,13 @@ def index():
     out += f"""<main class="wrap">
 <section class="hero">
   <h1 class="hand"><span>פירות</span> <span>העט</span></h1>
-  <p>חמישה ספרים קטנים שכתבתי וציירתי בעצמי, על חיוך, על נחת, על שלום ועל מסע אחד גדול. אפשר להוריד כל אחד מהם חינם, או להזמין עותק מודפס.</p>
-  <span class="pill">✏️ נכתב ואויר ביד על ידי {e(AUTHOR_FULL)}</span>
 </section>
 <section class="shelf" aria-label="הספרים">
 {cards}
+</section>
+<section class="hero intro">
+  <p>חמישה ספרים קטנים שכתבתי וציירתי בעצמי, על חיוך, על נחת, על שלום ועל מסע אחד גדול. אפשר להוריד כל אחד מהם חינם, או להזמין עותק מודפס.</p>
+  <span class="pill">✏️ נכתב ואויר ביד על ידי {e(AUTHOR_FULL)}</span>
 </section>
 <section class="notice">
   <div class="notice-item"><span class="ico">📖</span><div><b>לקרוא חינם</b><span>כל הספרים פתוחים לקריאה ולהורדה כקובץ PDF, בלי הרשמה ובלי תשלום.</span></div></div>
