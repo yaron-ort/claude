@@ -63,6 +63,7 @@ a{color:var(--lo)}
   <div class="card">
     <h1>Pitch Glider</h1>
     <p>Your voice is the bird's wings. Sing <b>higher</b> to rise, <b>lower</b> to drop, and stay quiet to glide down. Hold the right note to fly through each gate. Long tunnels mean long notes!</p>
+    <select id="gmode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="classic">Classic: you can see where each note is</option><option value="ear">By ear: every gate in the middle, find the note by listening</option></select>
     <p id="sumLine" style="font-size:14px"></p>
     <button id="micOn" style="width:100%;margin-bottom:4px">Turn on mic</button>
     <button class="go" id="goBtn">Start singing</button>
@@ -224,7 +225,7 @@ function ding(){if(!ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain(
 
 function newGame(){
   const base=+$('range').value;KEY=+$('key').value;let root=base+((KEY-base)%12+12)%12;if(root>base+5)root-=12;lo=root-2;hi=root+14;
-  const L=LV[+$('diff').value];S={L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap,perf:Math.max(0.2,Math.min(0.5,L.gap*0.22)),perfects:0};
+  const ear=$('gmode').value==='ear',L=Object.assign({},LV[+$('diff').value]);if(ear){L.lead+=2.5;L.space+=1.5}S={ear,L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap,perf:Math.max(0.2,Math.min(0.5,L.gap*0.22)),perfects:0};
   SC=$('scale').value.split(',').map(Number);KEY=+$('key').value;S.order=$('order').value;S.idx=0;S.dir=1;
   S.notes=[];for(let m=lo+1;m<=hi-1;m++)if(inScale(m))S.notes.push(m);
   if(S.order==='up'){const t=S.notes.findIndex(m=>((m-KEY)%12+12)%12===0);S.run=S.notes.slice(Math.max(0,t),Math.max(0,t)+SC.length+1);if(S.run.length<3)S.run=S.notes.slice(0,SC.length+1)}
@@ -257,14 +258,18 @@ function step(dt){
   let m=heard();$('hNote').textContent=m==null?'–':both(m);
   S.vowel=m!=null&&$('vmode').value!=='off'?vowelNow():(vq=[],null);$('hVow').textContent=S.vowel?S.vowel.toUpperCase():'–';
   if(m!=null){
+    if(S.ear){ // by ear: height shows how far you are from the next gate's note, and the gate is always in the middle
+      const ref=ahead?ahead.note:Math.round((lo+hi)/2);let d=m-ref;if($('fold').checked)d-=12*Math.round(d/12);
+      const half=(hi-lo)/2;d=Math.max(-half,Math.min(half,d));m=ref+d;const ty=Y((lo+hi)/2+d);S.y+=(ty-S.y)*Math.min(1,dt*14);S.vy=0;S.pitch=m;
+    }else{
     if($('fold').checked){const ref=ahead?ahead.note:(lo+hi)/2;m-=12*Math.round((m-ref)/12)}
-    m=Math.max(lo,Math.min(hi,m));const ty=Y(m);S.y+=(ty-S.y)*Math.min(1,dt*14);S.vy=0;S.pitch=m;
+    m=Math.max(lo,Math.min(hi,m));const ty=Y(m);S.y+=(ty-S.y)*Math.min(1,dt*14);S.vy=0;S.pitch=m;}
   }else{S.pitch=null;S.vy=Math.min(S.vy+220*dt,140);S.y=Math.min(GROUND()-14,S.y+S.vy*dt)}
   const px=S.dist+PX(),r=14;let inside=false,perfNow=false;
   for(const o of S.obs){
     const sx=o.x-S.dist;
     if($('guide').value==='hint'&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
-    const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=Y(o.note);
+    const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=S.ear?Y((lo+hi)/2):Y(o.note);
     if(px+r>o.x&&px-r<o.x+o.len){
       if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
       else if(S.pitch!=null){inside=true;o.inF=(o.inF||0)+dt;const pf=Math.abs(S.pitch-o.note)<S.perf&&(!o.vowel||S.vowel===o.vowel);if(pf){o.perfF=(o.perfF||0)+dt;perfNow=true}}
@@ -299,14 +304,15 @@ function draw(){
   g.fillStyle='#3a1522';g.beginPath();g.moveTo(0,H);for(let x=0;x<=W+40;x+=40)g.lineTo(x,GROUND()-60-40*Math.sin((x+d*0.2)/130)-20*Math.sin((x+d*0.2)/47));g.lineTo(W,H);g.fill();
   // note lanes
   const lh=(GROUND()-TOP())/(hi-lo);g.font='12px Rubik,sans-serif';g.textBaseline='middle';
-  for(let m=lo;m<=hi;m++){if(!inScale(m))continue;const tonic=(((m-KEY)%12)+12)%12===0;
+  if(S&&S.ear){g.strokeStyle='#f6ead922';g.setLineDash([4,8]);g.beginPath();g.moveTo(0,Y((lo+hi)/2));g.lineTo(W,Y((lo+hi)/2));g.stroke();g.setLineDash([])}
+  else for(let m=lo;m<=hi;m++){if(!inScale(m))continue;const tonic=(((m-KEY)%12)+12)%12===0;
     g.fillStyle=tonic?'#f6ead926':'#f6ead90d';g.fillRect(0,Y(m),W,1);g.fillStyle=tonic?'#f6ead9':'#c9a9a6aa';g.font=(tonic?'700 ':'')+'12px Rubik,sans-serif';g.fillText(both(m),6,Y(m)-7)}
   // ground
   g.fillStyle='#4a1d2b';g.fillRect(-20,GROUND(),W+40,H);g.fillStyle='#5e2636';for(let x=-((d)%30);x<W;x+=30)g.fillRect(x,GROUND(),14,3);
   if(!S)return;
   // gates
   const gh=Math.max(24,S.gap*lh);
-  for(const o of S.obs){const x=o.x-S.dist,gy=Y(o.note);if(x>W||x+o.len<0)continue;
+  for(const o of S.obs){const x=o.x-S.dist,gy=S.ear?Y((lo+hi)/2):Y(o.note);if(x>W||x+o.len<0)continue;
     const col=o.hit?'#7a3b45':'#ff8a4c';
     g.fillStyle=col;rr(x,TOP()-80,o.len,gy-gh-(TOP()-80),8);rr(x,gy+gh,o.len,GROUND()-(gy+gh),8);
     g.fillStyle='#ffffff22';g.fillRect(x+4,TOP()-80,4,gy-gh-(TOP()-80)-4);g.fillRect(x+4,gy+gh+4,4,GROUND()-gy-gh-8);
@@ -350,9 +356,9 @@ async function go(){
 }
 $('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('key').value,sc=$('scale').value.split(',').map(Number),b=+$('range').value;
   let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
-const SET=['range','diff','key','scale','order','guide','vmode'];
+const SET=['gmode','range','diff','key','scale','order','guide','vmode'];
 try{const sv=JSON.parse(localStorage.getItem('pitchglider:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
-function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${t('diff')} · ${t('range')} · ${t('key').split(' ')[0]} ${t('scale').toLowerCase()} · ${t('order').toLowerCase()}`;
+function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${$('gmode').value==='ear'?'By ear · ':''}${t('diff')} · ${t('range')} · ${t('key').split(' ')[0]} ${t('scale').toLowerCase()} · ${t('order').toLowerCase()}`;
   try{const sv={fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchglider:set',JSON.stringify(sv))}catch(e){}}
 for(const k of [...SET,'fold'])$(k).addEventListener('change',summary);summary();
 function showSettings(on){$('settings').hidden=!on;$('setBtn').setAttribute('aria-expanded',on);$('setBtn').textContent=on?'Hide settings':'Settings'}
