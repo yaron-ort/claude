@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Song Notes</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#1b0a12;--ink:#f6ead9;--mute:#c9a9a6;--on:#34d6a6;--hi:#ff8a4c;--lo:#5cc3ff;--line:#4a2230;--card:#2a1019;--gold:#ffd166}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px 14px 40px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:28px;font-weight:800;margin:0}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+a{color:var(--lo)}
+button,.btn{font:inherit;font-weight:600;color:var(--ink);background:#33141f;border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer}
+button:focus-visible,.btn:focus-within{outline:3px solid var(--lo);outline-offset:2px}
+.primary{background:var(--on);border-color:var(--on);color:#0c1f18}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px}
+#list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+#list li{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:#33141f;border:1px solid transparent;cursor:pointer}
+#list li.cur{border-color:var(--gold)}
+#list li span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list li small{color:var(--mute)}
+#list li button{padding:4px 10px;font-size:14px}
+.empty{color:var(--mute);margin:4px 0}
+#addRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+#file{display:none}
+#prog{height:6px;border-radius:3px;background:#33141f;overflow:hidden;display:none;margin-top:8px}#prog i{display:block;height:100%;width:0;background:var(--gold)}
+#now{display:flex;align-items:center;justify-content:center;gap:18px;min-height:96px}
+#nName{font-size:68px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:center}
+#nSol{font-size:26px;color:var(--mute);min-width:3em}
+#nNext{font-size:14px;color:var(--mute);text-align:center}
+canvas{width:100%;height:340px;display:block;border-radius:14px;background:linear-gradient(#2a1019,#1f0c15);border:1px solid var(--line)}
+.ctrl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#seek{flex:1 1 160px;accent-color:var(--gold)}
+#time{font-variant-numeric:tabular-nums;color:var(--mute);font-size:14px;min-width:88px;text-align:right;margin-left:auto}
+.opts{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--mute)}
+.opts label{display:flex;gap:6px;align-items:center}
+select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 6px}
+.note{font-size:13px;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1>Song Notes</h1><a href="./">All games</a></div>
+
+  <div class="card">
+    <ul id="list"></ul>
+    <p class="empty" id="empty">No songs yet. Add a song file from your phone, and the player works out the singer's notes.</p>
+    <div id="addRow">
+      <label class="btn primary" for="file">Add songs</label><input id="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" multiple>
+      <span class="note" id="status">Songs stay on this phone only. Nothing is uploaded.</span>
+    </div>
+    <div id="prog"><i></i></div>
+  </div>
+
+  <div id="player" hidden>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div id="now"><div id="nName">–</div><div id="nSol"></div></div>
+      <div id="nNext"></div>
+      <canvas id="cv" aria-label="Singer's pitch over time"></canvas>
+      <div class="ctrl">
+        <button id="playBtn" class="primary" style="min-width:90px">Play</button>
+        <button id="backBtn" aria-label="Back 5 seconds">−5s</button>
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+        <span id="time">0:00 / 0:00</span>
+      </div>
+      <div class="opts">
+        <label>Names <select id="names"><option value="both">E3 + Mi</option><option value="abc">E3 only</option><option value="sol">Mi only</option></select></label>
+        <label>Speed <select id="speed"><option value="1">Normal</option><option value="0.85">Slower</option><option value="0.7">Slow</option></select></label>
+        <label>Show ahead <select id="ahead"><option value="0">Only what was sung</option><option value="4" selected>Next 4 seconds too</option></select></label>
+      </div>
+    </div>
+    <p class="note">The line is worked out from the whole song, so in loud instrumental parts it can sometimes follow an instrument instead of the singer.</p>
+  </div>
+</main>
+<audio id="au" preload="auto"></audio>
+<script>
+const $=id=>document.getElementById(id);
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],SOL=['Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#','La','La#','Si'];
+const pc=m=>((Math.round(m)%12)+12)%12,nm=m=>NN[pc(m)]+(Math.floor(Math.round(m)/12)-1),sol=m=>SOL[pc(m)];
+const f2m=f=>69+12*Math.log2(f/440),HOP=0.02,fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
+
+// ---------- pitch analysis (YIN, same as Pitch Pal) ----------
+function yin(buf,sr,thr,fmin,fmax,n){
+  const W=n>>1,tmin=Math.max(2,Math.floor(sr/fmax)),tmax=Math.min(W-1,Math.floor(sr/fmin)),d=new Float32Array(tmax+2);
+  for(let tau=1;tau<=tmax+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
+  let run=0;d[0]=1;for(let tau=1;tau<=tmax+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
+  let tau=-1;for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0)return 0;const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;return sr/(den?tau+0.5*(a-c)/den:tau);
+}
+async function track(buffer,onProg){
+  const SR=16000,len=Math.ceil(buffer.duration*SR),oc=new OfflineAudioContext(1,len,SR);
+  const s=oc.createBufferSource();s.buffer=buffer;
+  const hp=oc.createBiquadFilter();hp.type='highpass';hp.frequency.value=+(new URLSearchParams(location.search).get('hpf')||100);
+  const lp=oc.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1400;
+  s.connect(hp);hp.connect(lp);lp.connect(oc.destination);s.start();
+  const x=(await oc.startRendering()).getChannelData(0),N=1024,hop=SR*HOP,frames=Math.max(0,Math.floor((x.length-N)/hop));
+  let peak=0;for(let i=0;i<x.length;i+=50)peak=Math.max(peak,Math.abs(x[i]));
+  const out=new Float32Array(frames).fill(NaN);
+  for(let f=0;f<frames;f++){
+    const w=x.subarray(f*hop,f*hop+N);let e=0;for(let i=0;i<N;i++)e+=w[i]*w[i];
+    if(Math.sqrt(e/N)>peak*0.03){const hz=yin(w,SR,+(new URLSearchParams(location.search).get('thr')||0.32),70,1100,N);if(hz)out[f]=f2m(hz)}
+    if(f%300===0){onProg(f/frames);await new Promise(r=>setTimeout(r,0))}
+  }
+  return clean(out);
+}
+function clean(a){
+  const n=a.length,m=new Float32Array(n).fill(NaN);
+  for(let i=0;i<n;i++){if(isNaN(a[i]))continue;const w=[];for(let j=i-3;j<=i+3;j++)if(j>=0&&j<n&&!isNaN(a[j]))w.push(a[j]);
+    if(w.length<3)continue;w.sort((p,q)=>p-q);const med=w[w.length>>1];m[i]=Math.abs(a[i]-med)>1?med:a[i]}
+  for(let i=0;i<n;){if(isNaN(m[i])){i++;continue}let j=i;while(j<n&&!isNaN(m[j])&&Math.abs(m[j]-m[i])<3)j++;if(j-i<6)for(let k=i;k<j;k++)m[k]=NaN;i=Math.max(j,i+1)}
+  return m;
+}
+// notes: runs of the same rounded pitch lasting 100 ms or more
+function notesOf(p){
+  const out=[];let i=0;const n=p.length;
+  while(i<n){if(isNaN(p[i])){i++;continue}const r=Math.round(p[i]);let j=i;
+    while(j<n&&!isNaN(p[j])&&Math.abs(p[j]-r)<0.75)j++;
+    if(j-i>=5){const last=out[out.length-1];if(last&&last.m===r&&i-last.e<=3)last.e=j;else out.push({s:i,e:j,m:r})}
+    i=Math.max(j,i+1)}
+  return out;
+}
+
+// ---------- song storage (IndexedDB, on this device only) ----------
+let db;
+const dbOpen=()=>new Promise((res,rej)=>{const r=indexedDB.open('songnotes',1);r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'});r.onsuccess=()=>res(db=r.result);r.onerror=()=>rej(r.error)});
+const tx=(mode,fn)=>new Promise((res,rej)=>{const t=db.transaction('songs',mode),st=t.objectStore('songs'),r=fn(st);t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)});
+const allSongs=()=>tx('readonly',s=>s.getAll());
+const putSong=x=>tx('readwrite',s=>s.put(x));
+const delSong=id=>tx('readwrite',s=>s.delete(id));
+
+let songs=[],cur=null,P=null,NOTES=[],lo=48,hi=72,url=null;
+async function refresh(){
+  songs=(await allSongs()).sort((a,b)=>a.added-b.added);
+  $('empty').hidden=songs.length>0;
+  $('list').innerHTML='';
+  for(const s of songs){
+    const li=document.createElement('li');li.className=cur&&cur.id===s.id?'cur':'';li.tabIndex=0;
+    li.innerHTML=`<span></span><small>${fmt(s.dur)}</small><button aria-label="Remove">✕</button>`;
+    li.querySelector('span').textContent=s.name;
+    li.onclick=e=>{if(e.target.tagName==='BUTTON')return;open(s)};
+    li.onkeydown=e=>{if(e.key==='Enter')open(s)};
+    li.querySelector('button').onclick=async()=>{if(!confirmRemove(s))return;await delSong(s.id);if(cur&&cur.id===s.id){stop();cur=null;$('player').hidden=true}refresh()};
+    $('list').appendChild(li);
+  }
+}
+function confirmRemove(s){const b=document.querySelector('#list li.cur');return window.__noConfirm||window.confirm('Remove "'+s.name+'" from this phone?')}
+
+$('file').onchange=async e=>{
+  const files=[...e.target.files];e.target.value='';
+  const ac=new (window.AudioContext||window.webkitAudioContext)();
+  let last=null;
+  for(const [k,f] of files.entries()){
+    const label=files.length>1?` (${k+1} of ${files.length})`:'';
+    try{
+      $('status').textContent='Reading '+f.name+label+'…';$('prog').style.display='block';$('prog').firstChild.style.width='0';
+      const buf=await ac.decodeAudioData(await f.arrayBuffer());
+      $('status').textContent='Finding the singer\'s notes'+label+'…';
+      const p=await track(buf,x=>$('prog').firstChild.style.width=(x*100)+'%');
+      last={id:Date.now()+'-'+k,name:f.name.replace(/\.[^.]+$/,''),blob:f,type:f.type,pitch:p,hop:HOP,dur:buf.duration,added:Date.now()};
+      await putSong(last);
+    }catch(err){$('status').textContent='Could not read '+f.name+'. Try an mp3 or m4a file.';console.error(err);continue}
+  }
+  ac.close();$('prog').style.display='none';
+  if(last){$('status').textContent='Ready. Songs stay on this phone only.';await refresh();open(last)}
+};
+
+// ---------- player ----------
+const au=$('au'),cv=$('cv'),cx=cv.getContext('2d');
+function open(s){
+  stop();cur=s;P=s.pitch instanceof Float32Array?s.pitch:Float32Array.from(s.pitch);NOTES=notesOf(P);
+  const v=[...P].filter(x=>!isNaN(x)).sort((a,b)=>a-b);
+  if(v.length){lo=Math.floor(v[Math.floor(v.length*0.05)])-2;hi=Math.ceil(v[Math.floor(v.length*0.97)])+2;if(hi-lo<12){const c=(hi+lo)/2;lo=Math.floor(c-6);hi=Math.ceil(c+6)}}
+  if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(new Blob([s.blob],{type:s.type||'audio/mpeg'}));au.src=url;au.playbackRate=+$('speed').value;
+  $('player').hidden=false;refresh();show(0);
+  try{localStorage.setItem('songnotes:last',s.id)}catch(e){}
+}
+function stop(){au.pause();$('playBtn').textContent='Play'}
+$('playBtn').onclick=()=>{if(au.paused){au.play();$('playBtn').textContent='Pause'}else stop()};
+$('backBtn').onclick=()=>{au.currentTime=Math.max(0,au.currentTime-5);show(au.currentTime)};
+au.onended=()=>stop();
+$('seek').oninput=()=>{if(!cur)return;au.currentTime=$('seek').value/1000*cur.dur;show(au.currentTime)};
+$('speed').onchange=()=>{au.playbackRate=+$('speed').value;au.preservesPitch=true;save()};
+$('names').onchange=()=>{save();show(au.currentTime)};$('ahead').onchange=()=>{save();show(au.currentTime)};
+function save(){try{localStorage.setItem('songnotes:set',JSON.stringify({names:$('names').value,speed:$('speed').value,ahead:$('ahead').value}))}catch(e){}}
+try{const o=JSON.parse(localStorage.getItem('songnotes:set')||'{}');for(const k of ['names','speed','ahead'])if(o[k]!=null)$(k).value=o[k]}catch(e){}
+const label=m=>{const v=$('names').value;return v==='abc'?nm(m):v==='sol'?sol(m):nm(m)};
+
+function noteAt(f){for(const n of NOTES){if(n.s>f)return null;if(f<n.e)return n}return null}
+function nextNote(f){for(const n of NOTES)if(n.s>f)return n;return null}
+function show(t){
+  if(!cur)return;
+  const f=Math.floor(t/HOP),n=noteAt(f);
+  if(n){$('nName').textContent=$('names').value==='sol'?sol(n.m):nm(n.m);$('nSol').textContent=$('names').value==='both'?sol(n.m):'';$('nName').style.color='var(--gold)'}
+  else{$('nName').style.color='var(--mute)';if(!P||isNaN(P[f])){$('nName').textContent='♪';$('nSol').textContent=''}}
+  const nx=nextNote(f);$('nNext').textContent=nx&&(nx.s-f)*HOP<6?'Next: '+label(nx.m)+(($('names').value==='both')?' · '+sol(nx.m):''):' ';
+  $('time').textContent=fmt(t)+' / '+fmt(cur.dur);$('seek').value=Math.round(t/cur.dur*1000);
+  draw(t);
+}
+function draw(t){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  if(cv.width!==W*dpr||cv.height!==H*dpr){cv.width=W*dpr;cv.height=H*dpr}
+  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
+  const ahead=+$('ahead').value,back=ahead?5:8,span=back+ahead,LX=44,X0=LX+(W-LX)*back/span;
+  const y=m=>H-10-(m-lo)/(hi-lo)*(H-20),x=tt=>LX+(tt-(t-back))/span*(W-LX);
+  cx.font='12px Rubik,system-ui';cx.textBaseline='middle';
+  for(let m=Math.ceil(lo);m<=hi;m++){const nat=!NN[pc(m)].includes('#'),C=pc(m)===0;
+    cx.strokeStyle=C?'#f6ead955':nat?'#f6ead922':'#f6ead90c';cx.lineWidth=1;cx.beginPath();cx.moveTo(LX,y(m));cx.lineTo(W,y(m));cx.stroke();
+    if(nat){cx.fillStyle=C?'#f6ead9':'#c9a9a6';cx.fillText($('names').value==='sol'?sol(m):nm(m),4,y(m))}}
+  // note bars
+  const f0=Math.floor((t-back)/HOP),f1=Math.ceil((t+ahead)/HOP),fn=Math.floor(t/HOP);
+  for(const n of NOTES){if(n.e<f0||n.s>f1)continue;const cur_=n.s<=fn&&fn<n.e;
+    cx.fillStyle=cur_?'#ffd16666':n.s>fn?'#5cc3ff40':'#34d6a640';const xa=x(n.s*HOP),xb=x(n.e*HOP);
+    cx.beginPath();cx.roundRect(xa,y(n.m)-6,Math.max(4,xb-xa),12,5);cx.fill();
+    if(xb-xa>26&&n.s>fn-40){cx.fillStyle=cur_?'#ffd166':n.s>fn?'#5cc3ffaa':'#34d6a6aa';cx.fillText(label(n.m),xa+3,y(n.m)-14)}}
+  // pitch line
+  const seg=(a,b,col,w)=>{cx.strokeStyle=col;cx.lineWidth=w;cx.lineJoin='round';cx.beginPath();let pen=false;
+    for(let f=Math.max(0,a);f<=Math.min(P.length-1,b);f++){const v=P[f];if(isNaN(v)){pen=false;continue}const X=x(f*HOP),Y=y(v);pen?cx.lineTo(X,Y):cx.moveTo(X,Y);pen=true}cx.stroke()};
+  seg(f0,fn,'#34d6a6',3);if(ahead)seg(fn,f1,'#5cc3ff88',2);
+  cx.strokeStyle='#ffd166';cx.lineWidth=2;cx.beginPath();cx.moveTo(X0,0);cx.lineTo(X0,H);cx.stroke();
+  if(!isNaN(P[fn])){cx.fillStyle='#ffd166';cx.beginPath();cx.arc(X0,y(P[fn]),7,0,7);cx.fill()}
+}
+function loop(){if(cur&&!au.paused)show(au.currentTime);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);addEventListener('resize',()=>cur&&show(au.currentTime));
+
+dbOpen().then(async()=>{await refresh();let id=null;try{id=localStorage.getItem('songnotes:last')}catch(e){}const s=songs.find(x=>x.id===id)||songs[0];if(s)open(s)}).catch(()=>{$('status').textContent='This browser cannot save songs. Try Chrome.'});
+window.__sn={get P(){return P},get NOTES(){return NOTES},show};
+</script>
+</body>
+</html>
