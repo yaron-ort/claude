@@ -36,9 +36,9 @@ a{color:#5cc3ff}
 </head>
 <body>
 <div class="card" id="home">
-  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 12</span></h1>
+  <h1>Walk and Sing <span style="font-size:14px;font-weight:500;color:var(--mute);vertical-align:middle">version 13</span></h1>
   <p>No screen needed. The phone sings a long note, then you sing it back and hold it. While you sing you hear live sounds: high beeps mean go up, low beeps mean go down. One beep: just a little. Two beeps: about one step. Three beeps: far. Climbing chimes mean you're on the note, so keep holding. Then it moves on to the next note.</p>
-  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="simon">Simon: the tune grows one note at a time</option><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
+  <select id="mode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="along">Sing along: the voice keeps singing until you match it</option><option value="simon">Simon: the tune grows one note at a time</option><option value="echo" selected>Echo challenge: sing back short tunes, level up</option><option value="compare">Listen and compare: hear yourself after every try</option><option value="notes">Note practice: hold one long note at a time</option></select>
   <p id="modeInfo" style="font-size:14px"></p>
   <p id="summary" style="color:var(--ink)" hidden></p>
   <button id="micOn">1. Turn on mic</button>
@@ -113,7 +113,7 @@ async function startMic(){
   const src=ctx.createMediaStreamSource(mic);
   proc=ctx.createScriptProcessor(2048,1,1);const sink=ctx.createGain();sink.gain.value=0;
   src.connect(proc);proc.connect(sink);sink.connect(ctx.destination);
-  proc.onaudioprocess=e=>{if(running&&Sg&&Sg.rec)simonTick(e.inputBuffer.getChannelData(0));else if(running)(C?compareTick:E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
+  proc.onaudioprocess=e=>{if(running&&A)alongTick(e.inputBuffer.getChannelData(0),e.inputBuffer.duration);else if(running&&Sg&&Sg.rec)simonTick(e.inputBuffer.getChannelData(0));else if(running)(C?compareTick:E?echoTick:tick)(e.inputBuffer.getChannelData(0),e.inputBuffer.duration)};
 }
 const now=()=>ctx.currentTime;
 const FORM={aah:[[730,1,90],[1090,0.5,110],[2440,0.22,170]],ooh:[[300,1,60],[870,0.35,80],[2240,0.08,150]]};
@@ -309,7 +309,7 @@ $('demoOn').onclick=()=>{demoCtx();for(let i=0;i<4;i++)chime(i,now()+0.05+i*0.5)
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
 // ---------- Echo challenge ----------
 let E=null;
-const INFO={simon:'Like Simon, with no talking: listen, beep, sing it back, beep. Then you hear your recording and the sounds again, and your score (x of y). Each round adds one note to the end of the tune, from 1 note up to 8.',compare:'The phone sings a note. You sing it for about 3 seconds. Then you hear your own voice, then the target, and whether you got it. If not, you get another try: up to 3 tries, then the next note.',echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
+const INFO={along:'A voice sings a note and keeps going while you sing with it. Match it and it stops, or it stops after 5 seconds. You hear yes or no and a short playback of you, then a new note. Headphones needed, so the mic only hears you.',simon:'Like Simon, with no talking: listen, beep, sing it back, beep. Then you hear your recording and the sounds again, and your score (x of y). Each round adds one note to the end of the tune, from 1 note up to 4.',compare:'The phone sings a note. You sing it for about 3 seconds. Then you hear your own voice, then the target, and whether you got it. If not, you get another try: up to 3 tries, then the next note.',echo:'The phone sings a short tune. Sing it back, note by note. A right note gives a chime, and close enough also counts. On a wrong note you hear your own voice and then the target, so you can hear the difference, and the game moves on. A perfect tune levels up. 3 lives.',notes:'The phone sings one long note. Sing it back and hold it until the chime.'};
 const modeInfo=()=>{$('modeInfo').textContent=INFO[$('mode').value]};$('mode').addEventListener('change',modeInfo);modeInfo();
 function measure(buf){let r=0;for(let i=0;i<buf.length;i+=4)r+=buf[i]*buf[i];r=Math.sqrt(r/(buf.length/4));
   const hz=r>0.01?yin(buf,ctx.sampleRate,0.15):0;if(!hz){sm=[];return null}sm.push(f2m(hz));if(sm.length>3)sm.shift();return [...sm].sort((a,b)=>a-b)[sm.length>>1]}
@@ -441,7 +441,7 @@ async function playSeq(words){
 async function simonLoop(){ // flow: sounds, beep, you sing, beep, your recording + the sounds, "x of y", one more note
   const tol=Math.max(+$('tol').value,0.8);
   while(running&&Sg){
-    const L=Sg.seq.length;$('stats').textContent=`Round ${L} of 8 · ${Sg.hits} hits so far`;
+    const L=Sg.seq.length;$('stats').textContent=`Round ${L} of 4 · ${Sg.hits} hits so far`;
     status(funny()?'Listen: '+sylText():`Listen: ${L} note${L>1?'s':''}`);await playSeq(false);if(!running||!Sg)return;
     await wait(0.15);beeps([84],0.12,'sine',0.25);await wait(0.3);
     status('Sing!');Sg.frames=[];Sg.ms=[];const t0=now()+0.1;Sg.rec=true;
@@ -456,16 +456,40 @@ async function simonLoop(){ // flow: sounds, beep, you sing, beep, your recordin
     status(`${good} of ${L}`+res.map(d=>d==null?' ·':Math.abs(d)<=tol?' ✓':d<0?' ▲':' ▼').join(''));
     if(good===L)await wait(beeps([72,76,79,84],0.09,'triangle',0.25));
     if($('hints').value==='words')await speak(`${good} of ${L}`);
-    $('stats').textContent=`Round ${L} of 8 · ${Sg.hits} hits so far`;
-    if(L>=8){const msg=`Done! ${Sg.hits} of ${Sg.total} hits.`;let hb=0;try{hb=+localStorage.getItem('pitchwalk:simonHits')||0;if(Sg.hits>hb)localStorage.setItem('pitchwalk:simonHits',Sg.hits)}catch(e){}
+    $('stats').textContent=`Round ${L} of 4 · ${Sg.hits} hits so far`;
+    if(L>=4){const msg=`Done! ${Sg.hits} of ${Sg.total} hits.`;let hb=0;try{hb=+localStorage.getItem('pitchwalk:simonHits')||0;if(Sg.hits>hb)localStorage.setItem('pitchwalk:simonHits',Sg.hits)}catch(e){}
       if(Sg.hits>=Sg.total*0.8)applause(2);status(msg);if($('hints').value==='words')await speak(msg+(Sg.hits>hb?' New record!':''));stopGame(msg+(Sg.hits>hb?' New record!':''));return}
     simonAdd();await wait(0.7);
   }
 }
 
+// ---------- Sing along ----------
+let A=null;
+function alongTick(buf,dt){
+  if(!A||!A.live)return;const m=measure(buf),tol=+$('tol').value;
+  if(m!=null){let d=m-A.note;if($('fold').checked)d-=12*Math.round(d/12);A.rec.push(Float32Array.from(buf));if(A.rec.length>40)A.rec.shift();
+    if(Math.abs(d)<=tol){A.on+=dt;A.grace=0}else{A.grace+=dt;if(A.grace>0.3)A.on=0}}
+  else{A.grace+=dt;if(A.grace>0.3)A.on=0}
+  if(A.on>=1)A.done=true;
+}
+async function alongLoop(){
+  const tb=MINE?'mine':($('timbre').value==='mix'||$('timbre').value==='tone'?'aah':$('timbre').value);
+  while(running&&A){
+    const pool=notes.filter(m=>m!==A.note),n=pool[Math.floor(Math.random()*pool.length)];
+    A.note=n;A.on=0;A.grace=0;A.rec=[];A.done=false;A.total++;$('stats').textContent=`${A.good} of ${A.total-1} right`;
+    status('Sing with it: '+SOL[pc(n)]);const v=voice(n,0,tb);await wait(0.4);A.live=true;const t0=now();
+    while(running&&A&&!A.done&&now()-t0<5)await wait(0.05);
+    if(!A)return;A.live=false;v.stop();if(!running)return;
+    const ok=A.done;if(ok)A.good++;
+    await wait(0.25);status(ok?'✓ Yes!':'✗ Not yet');await wait(beeps(ok?[76,84]:[55,52],0.13,ok?'triangle':'square',ok?0.25:0.12));
+    $('stats').textContent=`${A.good} of ${A.total} right`;
+    await wait(0.15);status('You…');await playRec(A.rec.slice(-Math.ceil(1.5*ctx.sampleRate/2048)));
+    await wait(0.6);
+  }
+}
 function stopGame(msg){
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
-  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;C=null;Sg=null;
+  $('run').hidden=true;$('home').hidden=false;$('summary').hidden=false;$('summary').textContent=msg;$('goBtn').textContent='Start again';E=null;C=null;Sg=null;A=null;A=null;
 }
 $('recTest').onclick=async()=>{
   await $('micOn').onclick();if(!mic)return;const b=$('recTest');b.disabled=true;b.textContent='Recording… sing now';
@@ -478,6 +502,8 @@ $('goBtn').onclick=async()=>{
   if($('mode').value==='simon'){buildNotes();E=null;C=null;Sg={syl:[],seq:[],best:0,hits:0,total:0,tryN:1,rec:false,frames:[],ms:[]};simonAdd();timb=$('timbre').value==='mix'?'aah':$('timbre').value;
     $('home').hidden=true;$('run').hidden=false;running=true;keepAwake();simonLoop();return}
   Sg=null;
+  if($('mode').value==='along'){buildNotes();E=null;C=null;A={note:null,good:0,total:0,live:false};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();alongLoop();return}
+  A=null;
   if($('mode').value==='compare'){buildNotes();E=null;prevNote=null;C={good:0,total:0,rec:false,frames:[],ds:[]};$('home').hidden=true;$('run').hidden=false;running=true;keepAwake();
     if($('hints').value==='words')await speak('Listen and compare.');compareLoop();return}
   C=null;
@@ -490,6 +516,7 @@ $('goBtn').onclick=async()=>{
 };
 $('stop').onclick=()=>{
   if(E){stopGame(`Last game: level ${E.level}, ${E.score} points.`);return}
+  if(A){stopGame(`Last game: ${A.good} of ${A.total} right.`);return}
   if(Sg){stopGame(`Last game: ${Sg.hits} of ${Sg.total} hits.`);return}
   if(C){stopGame(`Last walk: ${C.good} of ${C.total} notes right.`);return}
   running=false;busy=true;if(drone){drone.stop();drone=null}try{speechSynthesis.cancel()}catch(e){}try{wake?.release()}catch(e){}
