@@ -75,8 +75,8 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
 </head>
 <body>
 <div class="band"><div class="wrap">
-  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 9</span></h1>
-  <p class="sub"><a href="./" style="color:var(--on);font-weight:700">All singing games</a><br>Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
+  <h1>Pitch Pal <span class="small" style="font-weight:500;font-size:14px;vertical-align:middle">version 10</span></h1>
+  <p class="sub"><a href="./" style="color:var(--on);font-weight:700">All singing games</a> · <a href="song.html" style="color:#ffd166;font-weight:700">Song Notes</a><br>Play a song, sing along, and watch your voice against the singer's melody. Teal means you're on the note, coral means you're too high, blue means you're too low.</p>
 
   <div class="stage">
     <div class="fig" id="fig">
@@ -91,6 +91,8 @@ ul{padding-left:1.2em;margin:6px 0}li{margin:4px 0}
       <div class="empty" id="empty"><div><b>Pick a song or an exercise to start</b>Use headphones so the microphone only hears you.</div></div>
     </div>
     <div class="meter" aria-live="polite">
+      <div class="small">Singer's note now</div>
+      <div class="note" id="sNote" style="color:#ffd166">–</div><div style="font-size:22px;font-weight:700;color:var(--mute);line-height:1;margin-bottom:10px" id="sSol">&nbsp;</div>
       <div class="small">You're singing</div>
       <div class="note" id="note">–</div><div style="font-size:22px;font-weight:700;color:var(--mute);line-height:1" id="sol">&nbsp;</div>
       <div class="gauge" aria-hidden="true"><div class="needle" id="needle"></div></div>
@@ -173,7 +175,7 @@ const solName=m=>SOL[((Math.round(m)%12)+12)%12];
 const f2m=f=>69+12*Math.log2(f/440);
 const mName=m=>NN[((Math.round(m)%12)+12)%12]+(Math.floor(Math.round(m)/12)-1);
 const fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
-const HOP=0.02;let HPF=+(new URLSearchParams(location.search).get('hpf')||150);window.__pp={ref:()=>ref};
+const HOP=0.02;let HPF=+(new URLSearchParams(location.search).get('hpf')||100);window.__pp={ref:()=>ref};
 
 // ---------- YIN pitch detector ----------
 function yin(buf,sr,thr,fmin=65,fmax=1100,n=buf.length){
@@ -467,6 +469,7 @@ function frame(){
       if(playing&&!recMode){user.push({t:t-0.06,m,j});scoreFrame(t);if(j.c!=='none')stats[j.c]++;if(user.length%15===0)showStats()}
     }else{smooth=[];cur=null;if(playing&&!recMode)scoreFrame(t)}
   }else if(recMode&&ref){const p=user.find(p=>Math.abs(p.t-t)<HOP);cur=p?{m:p.m,j:p.j}:null}
+  {const r=refAt(t);if(ref&&!isNaN(r)){$('sNote').textContent=mName(Math.round(r));$('sSol').textContent=solName(r)}else{$('sNote').textContent=ref?'rest':'–';$('sSol').innerHTML='&nbsp;'}}
   meter();
   if(songBuf){$('seek').value=t;$('time').textContent=fmt(t)+' / '+fmt(dur())}
   draw(t);requestAnimationFrame(frame);
@@ -490,7 +493,7 @@ function draw(t){
   for(let m=lo;m<hi;m++){const pc=((m%12)+12)%12,black=[1,3,6,8,10].includes(pc);
     g.fillStyle=black?'#230d16':'#2e1119';g.fillRect(0,Y(m)-lh/2,W,lh);
     if(pc===0){g.fillStyle='#4a2230';g.fillRect(0,Y(m)+lh/2-1,W,1)}
-    if(!black&&(lh>13||pc===0)){g.fillStyle=pc===0?'#f6ead9':'#c9a9a6';g.font=`${pc===0?600:400} 12px Rubik,sans-serif`;g.textBaseline='middle';g.fillText(mName(m)+'  '+solName(m),8,Y(m))}}
+    if(!black&&(lh>7||pc===0)){g.fillStyle=pc===0?'#f6ead9':'#c9a9a6';g.font=`${pc===0?600:400} ${lh>13?12:10}px Rubik,sans-serif`;g.textBaseline='middle';g.fillText(mName(m)+'  '+solName(m),8,Y(m))}}
   if(!ref)return;
   // singer's melody
   const i0=Math.max(0,Math.floor(t0/HOP)),i1=Math.min(ref.length-1,Math.ceil(t1/HOP));
@@ -509,6 +512,7 @@ function draw(t){
     prev={x,y,t:p.t}}
   // playhead + live dot
   g.fillStyle='#f6ead9';g.fillRect(px-1,0,2,H);
+  {const r=ref[Math.round(t/HOP)];if(r!=null&&!isNaN(r)){const y=Y(r),txt=mName(Math.round(r))+' '+solName(r);g.font='700 14px Rubik,sans-serif';const w=g.measureText(txt).width+14;g.fillStyle='#ffd166';g.beginPath();g.roundRect(px-w-10,y-12,w,24,12);g.fill();g.fillStyle='#1b0a12';g.textBaseline='middle';g.fillText(txt,px-w-3,y+1)}}
   if(cur){const m=cur.j.c==='none'&&$('fold').checked?fitRange(cur.m):cur.j.shown,y=Y(m);
     g.fillStyle=COL[cur.j.c];g.shadowColor=COL[cur.j.c];g.shadowBlur=18;g.beginPath();g.arc(px,y,9,0,7);g.fill();g.shadowBlur=0}
 }
