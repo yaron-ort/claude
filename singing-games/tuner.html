@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Find Your Note</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#1b0a12;--ink:#f6ead9;--mute:#c9a9a6;--on:#34d6a6;--hi:#ff8a4c;--lo:#5cc3ff;--line:#4a2230;--card:#2a1019;--gold:#ffd166}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:14px 14px 40px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:28px;font-weight:800;margin:0}
+a{color:var(--lo)}
+button{font:inherit;font-weight:600;color:var(--ink);background:#33141f;border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--lo);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+.primary{background:var(--on);border-color:var(--on);color:#0c1f18}
+.rec{background:#e5484d;border-color:#e5484d;color:#fff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px}
+#read{display:flex;align-items:center;justify-content:center;gap:16px;min-height:104px;border-radius:16px;transition:box-shadow .2s,background .2s}
+#read.perfect{background:#ffd16614;box-shadow:0 0 0 2px var(--gold),0 0 30px #ffd16655}
+#nName{font-size:76px;font-weight:800;line-height:1;min-width:2.5em;text-align:center;font-variant-numeric:tabular-nums;transition:color .15s}
+#side{display:flex;flex-direction:column;gap:2px;min-width:7.5em}
+#nSol{font-size:26px;font-weight:600;color:var(--mute);line-height:1.1}
+#msg{font-size:16px;font-weight:600}
+#cents{font-size:13px;color:var(--mute)}
+canvas{width:100%;height:360px;display:block;border-radius:14px;background:linear-gradient(#2a1019,#1f0c15);border:1px solid var(--line)}
+.stats{display:flex;gap:6px}
+.stats div{flex:1;background:#33141f;border:1px solid var(--line);border-radius:10px;text-align:center;padding:4px;line-height:1.15}
+.stats b{display:block;font-size:19px;font-variant-numeric:tabular-nums}.stats span{font-size:11px;color:var(--mute)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row[hidden]{display:none}
+#seek{flex:1 1 160px;accent-color:var(--gold)}
+#time{font-variant-numeric:tabular-nums;color:var(--mute);font-size:14px}
+#takes{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+#takes li{display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:10px;background:#33141f;border:1px solid transparent}
+#takes li.cur{border-color:var(--gold)}
+#takes li span{flex:1}#takes li small{color:var(--mute)}
+#takes button{padding:4px 12px;font-size:14px}
+.note{font-size:13px;color:var(--mute);margin:0}
+select{font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 6px}
+#mode{font-size:13px;font-weight:600;color:var(--gold);text-align:center;min-height:1.2em}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1>Find Your Note</h1><a href="./">All games</a></div>
+
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div id="mode"></div>
+    <div id="read" aria-live="polite">
+      <div id="nName">–</div>
+      <div id="side"><div id="nSol">&nbsp;</div><div id="msg">Press Start and sing</div><div id="cents">&nbsp;</div></div>
+    </div>
+    <canvas id="cv" aria-label="Your pitch over time, with note lanes"></canvas>
+    <div class="stats">
+      <div><b id="sPerf">0.0 s</b><span>in tune</span></div>
+      <div><b id="sHold">0.0 s</b><span>hold now</span></div>
+      <div><b id="sBest">0.0 s</b><span>best hold</span></div>
+    </div>
+    <div class="row">
+      <button id="startBtn" class="primary">Start singing</button>
+      <button id="playBtn" disabled>Play back</button>
+      <label class="note" style="display:flex;gap:6px;align-items:center;margin-left:auto">Names <select id="names"><option value="both">E3 + Mi</option><option value="abc">E3</option><option value="sol">Mi</option></select></label>
+    </div>
+    <div class="row" id="pbRow" hidden>
+      <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Playback position">
+      <span id="time">0:00 / 0:00</span>
+    </div>
+  </div>
+
+  <div class="card" id="takesCard" hidden>
+    <b>Your recordings</b>
+    <ul id="takes"></ul>
+    <p class="note" style="margin-top:6px">Recordings are kept until you close this page.</p>
+  </div>
+
+  <p class="note">Gold glow means you're right on the note (within 10 cents). Green is close, coral is a bit high, blue is a bit low. Use the phone's own mic; Bluetooth headphones keep working.</p>
+</main>
+<audio id="au"></audio>
+<script>
+const $=id=>document.getElementById(id);
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],SOL=['Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#','La','La#','Si'];
+const pc=m=>((Math.round(m)%12)+12)%12,nm=m=>NN[pc(m)]+(Math.floor(Math.round(m)/12)-1),sol=m=>SOL[pc(m)];
+const f2m=f=>69+12*Math.log2(f/440),fmt=t=>{t=Math.max(0,t|0);return (t/60|0)+':'+String(t%60).padStart(2,'0')};
+const COL={perfect:'#ffd166',good:'#34d6a6',hi:'#ff8a4c',lo:'#5cc3ff'};
+const PERF=10,GOOD=25; // cents
+
+function yin(buf,sr,thr,fmin,fmax){
+  const n=buf.length,W=n>>1,tmin=Math.max(2,Math.floor(sr/fmax)),tmax=Math.min(W-1,Math.floor(sr/fmin)),d=new Float32Array(tmax+2);
+  for(let tau=1;tau<=tmax+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
+  let run=0;d[0]=1;for(let tau=1;tau<=tmax+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
+  let tau=-1;for(let t=tmin;t<=tmax;t++){if(d[t]<thr){while(t+1<=tmax&&d[t+1]<d[t])t++;tau=t;break}}
+  if(tau<0)return 0;const a=d[tau-1],b=d[tau],c=d[tau+1],den=a-2*b+c;return sr/(den?tau+0.5*(a-c)/den:tau);
+}
+const judge=m=>{const c=Math.round((m-Math.round(m))*100);return {c,k:Math.abs(c)<=PERF?'perfect':Math.abs(c)<=GOOD?'good':c>0?'hi':'lo'}};
+
+// ---------- mic (phone's own mic, no echo cancellation: keeps Bluetooth headphones in music mode) ----------
+let mic=null,take=null,takes=[],sm=[],vc=null,perfT=0,hold=0,best=0,lastNow=0,parts=[];
+async function openMic(){
+  const BT=/bluetooth|headset|hands|\bbt\b|airpods|buds|sco/i,cons=id=>({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  const pickOwn=async()=>{try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput'&&x.label);const own=d.find(x=>!BT.test(x.label)&&x.deviceId!=='default'&&x.deviceId!=='communications');return d.some(x=>BT.test(x.label))&&own?own.deviceId:null}catch(e){return null}};
+  let id=await pickOwn(),stream=await navigator.mediaDevices.getUserMedia(cons(id));
+  if(!id){const id2=await pickOwn();if(id2){stream.getTracks().forEach(x=>x.stop());stream=await navigator.mediaDevices.getUserMedia(cons(id2))}}
+  const ac=new (window.AudioContext||window.webkitAudioContext)();await ac.resume();
+  const an=ac.createAnalyser();an.fftSize=2048;ac.createMediaStreamSource(stream).connect(an);
+  return {stream,ac,an,buf:new Float32Array(2048)};
+}
+$('startBtn').onclick=async()=>{
+  if(take){stopTake();return}
+  stopPlayback();
+  try{mic=mic||await openMic()}catch(e){$('msg').textContent='The mic is blocked. Allow the microphone for this site and try again.';return}
+  let rec=null,chunks=[];
+  try{rec=new MediaRecorder(mic.stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.start()}catch(e){rec=null}
+  take={t0:performance.now(),trace:[],rec,chunks,n:takes.length+1};
+  perfT=0;hold=0;best=0;showStats();
+  $('startBtn').textContent='Stop';$('startBtn').className='rec';$('playBtn').disabled=true;$('mode').textContent='● Recording';
+};
+function stopTake(){
+  const tk=take;take=null;$('startBtn').textContent='Start singing';$('startBtn').className='primary';$('mode').textContent='';
+  tk.dur=(performance.now()-tk.t0)/1000;tk.perf=perfT;tk.best=best;
+  const done=()=>{if(tk.chunks.length)tk.blob=new Blob(tk.chunks,{type:tk.rec.mimeType||'audio/webm'});takes.unshift(tk);if(takes.length>8)takes.pop();renderTakes(tk);$('playBtn').disabled=false};
+  if(tk.rec&&tk.rec.state!=='inactive'){tk.rec.onstop=done;tk.rec.stop()}else done();
+  mic.stream.getTracks().forEach(x=>x.stop());mic.ac.close();mic=null; // release the mic so headphones return to normal
+  sm=[];setRead(null);
+}
+
+// ---------- playback ----------
+const au=$('au');let pb=null;
+function renderTakes(sel){
+  $('takesCard').hidden=!takes.length;$('takes').innerHTML='';
+  for(const tk of takes){const li=document.createElement('li');li.className=tk===sel?'cur':'';
+    li.innerHTML=`<span>Take ${tk.n}</span><small>${fmt(tk.dur)} · in tune ${tk.perf.toFixed(1)} s</small><button>Play</button>`;
+    li.querySelector('button').onclick=()=>startPlayback(tk);$('takes').appendChild(li)}
+  if(sel)cur=sel;
+}
+let cur=null;
+$('playBtn').onclick=()=>{if(pb&&!au.paused){au.pause();$('playBtn').textContent='Play back'}else if(pb){au.play();$('playBtn').textContent='Pause'}else if(cur)startPlayback(cur)};
+function startPlayback(tk){
+  if(take)return;stopPlayback();cur=tk;renderTakes(tk);pb=tk;vc=null;
+  if(tk.blob){au.src=URL.createObjectURL(tk.blob);au.currentTime=0;au.play().catch(()=>{})}
+  $('pbRow').hidden=false;$('mode').textContent='▶ Playing back take '+tk.n;$('playBtn').textContent='Pause';$('playBtn').disabled=false;
+}
+function stopPlayback(){if(!pb)return;au.pause();if(au.src)URL.revokeObjectURL(au.src);au.removeAttribute('src');pb=null;$('pbRow').hidden=true;$('mode').textContent='';$('playBtn').textContent='Play back';setRead(null)}
+au.onended=()=>{$('playBtn').textContent='Play back again';$('mode').textContent='Finished. Pick a take to hear it again.'};
+$('seek').oninput=()=>{if(pb)au.currentTime=$('seek').value/1000*pb.dur};
+const pbTime=()=>pb?Math.min(pb.dur,au.currentTime||0):0;
+const traceAt=(tr,t)=>{let lo=0,hi=tr.length-1;if(hi<0)return null;while(lo<hi){const m=(lo+hi)>>1;if(tr[m].t<t)lo=m+1;else hi=m}const p=tr[lo];return p&&Math.abs(p.t-t)<0.08?p:null};
+
+// ---------- readout ----------
+function label(m){const v=$('names').value;return v==='sol'?sol(m):nm(m)}
+function setRead(m){
+  if(m==null){$('nName').textContent='–';$('nName').style.color='var(--mute)';$('nSol').innerHTML='&nbsp;';$('msg').textContent=take?'Sing!':pb?'':'Press Start and sing';$('msg').style.color='';$('cents').innerHTML='&nbsp;';$('read').classList.remove('perfect');return}
+  const j=judge(m);$('nName').textContent=label(m);$('nName').style.color=COL[j.k];$('nSol').textContent=$('names').value==='both'?sol(m):' ';
+  $('msg').textContent=j.k==='perfect'?'Perfect!':j.k==='good'?'Close':j.k==='hi'?'A bit high':'A bit low';$('msg').style.color=COL[j.k];
+  $('cents').textContent=(j.c>0?'+':'')+j.c+' cents';$('read').classList.toggle('perfect',j.k==='perfect');
+}
+function showStats(){$('sPerf').textContent=perfT.toFixed(1)+' s';$('sHold').textContent=hold.toFixed(1)+' s';$('sBest').textContent=best.toFixed(1)+' s'}
+$('names').onchange=()=>{try{localStorage.setItem('tuner:names',$('names').value)}catch(e){}};
+try{const v=localStorage.getItem('tuner:names');if(v)$('names').value=v}catch(e){}
+
+// ---------- drawing ----------
+const cv=$('cv'),cx=cv.getContext('2d');
+function draw(trace,t,live){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  if(cv.width!==W*dpr||cv.height!==H*dpr){cv.width=W*dpr;cv.height=H*dpr}
+  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
+  const back=6,LX=50,X0=live?W-40:LX+(W-LX)*0.6,span=live?back:back/0.6;
+  const last=trace.length?traceAt(trace,t)||null:null;
+  {const w=trace.filter(p=>p.t>t-4&&p.t<=t+1).map(p=>p.m).sort((a,b)=>a-b),tgt=w.length?w[w.length>>1]:(vc==null?57:vc);
+   vc=vc==null||Math.abs(vc-tgt)>10?tgt:vc+(tgt-vc)*0.04}
+  const lo=vc-7,hi=vc+7,lh=H/(hi-lo),y=m=>H-(m-lo)*lh,x=tt=>X0-(t-tt)/span*(X0-LX);
+  const curNote=last?Math.round(last.m):null,j=last?judge(last.m):null;
+  cx.textBaseline='middle';
+  for(let m=Math.ceil(lo-0.5);m<=Math.floor(hi+0.5);m++){
+    const black=NN[pc(m)].includes('#'),isCur=m===curNote;
+    cx.fillStyle=isCur?(j.k==='perfect'?'#ffd16626':'#f6ead912'):black?'#230d16':'#2e1119';cx.fillRect(0,y(m)-lh/2,W,lh);
+    // the note's center line: glows gold when you're right on it
+    if(isCur&&j.k==='perfect'){cx.save();cx.shadowColor='#ffd166';cx.shadowBlur=18;cx.strokeStyle='#ffd166';cx.lineWidth=3;cx.beginPath();cx.moveTo(LX,y(m));cx.lineTo(W,y(m));cx.stroke();cx.restore()}
+    else{cx.strokeStyle=isCur?'#f6ead955':'#f6ead914';cx.lineWidth=1;cx.setLineDash(isCur?[]:[4,6]);cx.beginPath();cx.moveTo(LX,y(m));cx.lineTo(W,y(m));cx.stroke();cx.setLineDash([])}
+    cx.font=(isCur?'700 15px':'400 12px')+' Rubik,system-ui';cx.fillStyle=isCur?(j.k==='perfect'?'#ffd166':'#f6ead9'):black?'#c9a9a688':'#c9a9a6';
+    cx.fillText(label(m)+($('names').value==='both'&&!black&&lh>22?' '+sol(m):''),6,y(m));
+  }
+  // your pitch trail, coloured by how in tune it is
+  cx.lineCap='round';let pv=null;
+  for(const p of trace){if(p.t<t-span||p.t>t+(live?0:span*0.67)){pv=null;continue}
+    const X=x(p.t),Y=y(p.m),k=judge(p.m).k;
+    if(pv&&p.t-pv.t<0.15&&Math.abs(p.m-pv.m)<1.5){cx.strokeStyle=COL[k];cx.lineWidth=k==='perfect'?6:4;cx.globalAlpha=p.t>t?0.35:1;
+      if(k==='perfect'){cx.shadowColor='#ffd166';cx.shadowBlur=12}cx.beginPath();cx.moveTo(pv.X,pv.Y);cx.lineTo(X,Y);cx.stroke();cx.shadowBlur=0;cx.globalAlpha=1}
+    pv={t:p.t,m:p.m,X,Y}}
+  // now line + dot
+  cx.fillStyle='#f6ead955';cx.fillRect(X0-1,0,2,H);
+  if(last){cx.fillStyle=COL[j.k];cx.shadowColor=COL[j.k];cx.shadowBlur=j.k==='perfect'?26:10;cx.beginPath();cx.arc(X0,y(last.m),j.k==='perfect'?11:8,0,7);cx.fill();cx.shadowBlur=0;
+    if(live&&j.k==='perfect'&&Math.random()<0.5)parts.push({x:X0,y:y(Math.round(last.m)),vx:-1-Math.random()*2,vy:(Math.random()-0.5)*2,l:1})}
+  for(const q of parts){q.x+=q.vx;q.y+=q.vy;q.l-=0.03;cx.globalAlpha=Math.max(0,q.l);cx.fillStyle='#ffd166';cx.beginPath();cx.arc(q.x,q.y,2.5,0,7);cx.fill()}cx.globalAlpha=1;parts=parts.filter(q=>q.l>0);
+  if(!trace.length){cx.fillStyle='#c9a9a6';cx.font='16px Rubik,system-ui';cx.textAlign='center';cx.fillText(take?'Sing any note…':'Press "Start singing"',(W+LX)/2,H/2);cx.textAlign='left'}
+}
+
+// ---------- main loop ----------
+function frame(now){
+  const dt=lastNow?Math.min(0.1,(now-lastNow)/1000):0;lastNow=now;
+  if(take&&mic){
+    mic.an.getFloatTimeDomainData(mic.buf);const b=mic.buf;let e=0;for(let i=0;i<b.length;i++)e+=b[i]*b[i];
+    const hz=Math.sqrt(e/b.length)>0.01?yin(b,mic.ac.sampleRate,0.15,65,1100):0,t=(performance.now()-take.t0)/1000;
+    if(hz){sm.push(f2m(hz));if(sm.length>3)sm.shift();const m=[...sm].sort((a,c)=>a-c)[sm.length>>1];take.trace.push({t,m});setRead(m);
+      const k=judge(m).k;if(k==='perfect'){perfT+=dt;hold+=dt;best=Math.max(best,hold)}else hold=0}
+    else{sm=[];hold=0;setRead(null)}
+    showStats();draw(take.trace,t,true);
+  }else if(pb){
+    const t=pbTime(),p=traceAt(pb.trace,t);setRead(p?p.m:null);
+    $('seek').value=Math.round(t/pb.dur*1000);$('time').textContent=fmt(t)+' / '+fmt(pb.dur);draw(pb.trace,t,false);
+  }else draw([],0,true);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__tn={get takes(){return takes}};
+</script>
+</body>
+</html>
