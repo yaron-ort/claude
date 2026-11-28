@@ -78,7 +78,7 @@ a{color:var(--lo)}
     <div class="row">
       <select id="key" aria-label="Scale key"><option value="0">Do (C)</option><option value="2">Re (D)</option><option value="4">Mi (E)</option><option value="5">Fa (F)</option><option value="7">Sol (G)</option><option value="9">La (A)</option><option value="11">Si (B)</option><option value="1">Do# (C#)</option><option value="3">Re# (D#)</option><option value="6">Fa# (F#)</option><option value="8">Sol# (G#)</option><option value="10">La# (A#)</option></select>
       <select id="scale" aria-label="Scale type"><option value="0,2,4,5,7,9,11">Major</option><option value="0,2,3,5,7,8,10">Minor</option><option value="0,2,4,7,9">Pentatonic major</option><option value="0,3,5,7,10">Pentatonic minor</option><option value="0,4,7">Major chord only (Do-Mi-Sol)</option><option value="0,1,2,3,4,5,6,7,8,9,10,11">All notes (chromatic)</option></select>
-      <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option><optgroup label="Songs"><option value="song:yonatan">Song: Yonatan HaKatan</option><option value="song:hevenu">Song: Hevenu Shalom Aleichem</option><option value="song:sevivon">Song: Sevivon Sov Sov Sov</option><option value="song:yemei">Song: Yemei HaHanukkah</option><option value="song:hanukkah">Song: Hanukkah Hanukkah</option></optgroup></select>
+      <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option><optgroup label="My songs (on this phone)" id="myGroup"></optgroup><optgroup label="Songs"><option value="song:yonatan">Song: Yonatan HaKatan</option><option value="song:hevenu">Song: Hevenu Shalom Aleichem</option><option value="song:sevivon">Song: Sevivon Sov Sov Sov</option><option value="song:yemei">Song: Yemei HaHanukkah</option><option value="song:hanukkah">Song: Hanukkah Hanukkah</option></optgroup></select>
     </div>
     <div class="row"><select id="guide" aria-label="Guide note"><option value="hold" selected>Keep playing the note until I pass the gate</option><option value="hint">Play each note once, briefly</option><option value="off">No guide note</option></select></div>
     <div class="row"><select id="vmode" aria-label="Vowels"><option value="off">Vowels: off</option><option value="show" selected>Vowels: show the vowel I sing</option><option value="gates">Vowels: gates ask for a vowel too</option></select>
@@ -86,6 +86,16 @@ a{color:var(--lo)}
     <p id="calState" style="font-size:14px;margin-top:0"></p>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label><br>
     <button id="listen" style="margin-top:6px">Listen to the scale</button>
+    <button id="myAdd" style="margin-top:8px;width:100%">+ Add my own song (notes or a MIDI file)</button>
+    <div id="myBox" hidden style="margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px">
+      <input id="myName" placeholder="Song name" style="width:100%;font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px">
+      <label style="font-size:14px;display:block;margin-top:6px">Notes, each as note/beats (beats 1 = a quarter note; - is a rest). Example: E4/0.5 B4/0.5 A4 -/0.5 G#4/0.5
+        <textarea id="myNotes" rows="5" style="width:100%;font:inherit;font-size:14px;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:4px"></textarea></label>
+      <div class="row" style="align-items:center"><label style="font-size:14px">Tempo <input id="myBpm" type="number" value="100" min="30" max="240" style="width:80px;font:inherit;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px"></label>
+        <label style="font-size:14px">or load a MIDI file <input id="myMidi" type="file" accept=".mid,.midi,audio/midi"></label></div>
+      <div class="row"><button id="mySave">Save song</button><button id="myDel">Delete this song</button><button id="myCancel">Close</button></div>
+      <p id="myMsg" style="font-size:13px;margin:4px 0 0;color:var(--mute)">Your songs stay on this phone only.</p>
+    </div>
     <div id="songSet" hidden style="margin-top:8px">
       <div class="row"><select id="songLives" aria-label="Song lives"><option value="practice" selected>Song: play to the end, never stop</option><option value="game">Song: game with lives, repeats</option></select></div>
       <label style="font-size:14px;display:block;margin-top:6px">Words to show on the gates (one syllable per note, spaces between):<textarea id="songWords" rows="3" style="width:100%;font:inherit;font-size:15px;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:4px"></textarea></label>
@@ -275,9 +285,41 @@ const SONGS={
   [null,1],[A4,1],[B4,1],[C5,1],[B4,3],[FS4,1],[B4,3],[A4,1],[A4,1],[G4,3],
   [null,1],[FS4,1],[G4,1],[A4,1],[B4,2],[A4,2],[G4,2],[FS4,2],[B4,1.5],[A4,0.5],[G4,1],[FS4,1],[E4,4],[null,4]]}
 };
-function songWords(id){let w=null;try{w=localStorage.getItem('pitchglider:words:'+id)}catch(e){}if(w==null)w=SONGS[id].words||'';return w.trim()?w.trim().split(/[\s\-]+/):[]}
+// ---------- my own songs: kept only on this phone ----------
+const NOTE_RX=/^([A-Ga-g])([#b]?)(-?\d)$/;
+function parseNote(t){if(t==='-'||t==='r'||t==='R')return null;const m=NOTE_RX.exec(t);if(!m)throw new Error('I don\'t understand "'+t+'"');
+  const pcs={C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1].toUpperCase()]+(m[2]==='#'?1:m[2]==='b'?-1:0);return 12*(+m[3]+1)+pcs}
+function parseNotes(txt){const out=[];for(const tok of txt.replace(/[|,]/g,' ').split(/\s+/).filter(Boolean)){const [n,b]=tok.split('/');const beats=b?eval_frac(b):1;if(!(beats>0))throw new Error('Bad length in "'+tok+'"');out.push([parseNote(n),beats])}
+  if(!out.some(n=>n[0]!=null))throw new Error('No notes found');return out}
+function eval_frac(x){if(/^\d+\/\d+$/.test(x)){const [a,b]=x.split('/');return a/b}return parseFloat(x)}
+const nName=m=>['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][((m%12)+12)%12]+(Math.floor(m/12)-1);
+function notesText(ns){return ns.map(([m,b])=>(m==null?'-':nName(m))+(b===1?'':'/'+(+b.toFixed(3)))).join(' ')}
+function mySongs(){try{return JSON.parse(localStorage.getItem('pitchglider:mysongs')||'[]')}catch(e){return []}}
+function saveMySongs(a){try{localStorage.setItem('pitchglider:mysongs',JSON.stringify(a))}catch(e){}}
+function getSong(id){if(id.startsWith('my:')){const x=mySongs().find(y=>y.id===id.slice(3));return x?{bpm:x.bpm,key:0,scale:'0,1,2,3,4,5,6,7,8,9,10,11',notes:x.notes,words:x.words||''}:null}return SONGS[id]}
+function fillMySongs(sel){const og=$('myGroup');og.innerHTML=mySongs().map(x=>`<option value="song:my:${x.id}"></option>`).join('');
+  [...og.children].forEach((o,i)=>o.textContent='My song: '+mySongs()[i].name);if(sel)$('order').value=sel}
+// MIDI file -> one melody line (the highest note when notes overlap)
+function readMidi(buf){
+  const d=new DataView(buf);let p=0;const u32=()=>{const v=d.getUint32(p);p+=4;return v},u16=()=>{const v=d.getUint16(p);p+=2;return v},u8=()=>d.getUint8(p++);
+  const vlq=()=>{let v=0,b;do{b=u8();v=(v<<7)|(b&127)}while(b&128);return v};
+  if(u32()!==0x4d546864)throw new Error('Not a MIDI file');const hl=u32();u16();const nt=u16(),div=u16();p=14+hl-6;
+  let tempo=500000;const notes=[];
+  for(let k=0;k<nt;k++){if(u32()!==0x4d54726b)break;const len=u32(),end=p+len;let t=0,run=0;const on={};
+    while(p<end){t+=vlq();let st=d.getUint8(p);if(st&128)p++;else st=run;run=st;const ty=st&0xf0;
+      if(st===0xff){const mt=u8(),l=vlq();if(mt===0x51&&l===3&&!notes.length)tempo=(d.getUint8(p)<<16)|(d.getUint8(p+1)<<8)|d.getUint8(p+2);p+=l}
+      else if(st===0xf0||st===0xf7){p+=vlq()}
+      else if(ty===0x90||ty===0x80){const n=u8(),v=u8();if(ty===0x90&&v>0){on[n]=t}else if(on[n]!=null){notes.push({s:on[n],e:t,n});delete on[n]}}
+      else if(ty===0xc0||ty===0xd0)p+=1;else p+=2}
+    p=end}
+  notes.sort((a,b)=>a.s-b.s||b.n-a.n);const mel=[];for(const x of notes){const l=mel[mel.length-1];if(l&&x.s<l.e){if(x.s===l.s)continue;l.e=x.s}mel.push({...x})}
+  const q=x=>Math.round(x/div*4)/4,out=[];let t=0;
+  for(const x of mel){const s=q(x.s),e=Math.max(q(x.e),s+0.25);if(e<=t)continue;if(s>t)out.push([null,s-t]);out.push([x.n,e-Math.max(s,t)]);t=e}
+  return {notes:out,bpm:Math.round(60000000/tempo)};
+}
+function songWords(id){let w=null;try{w=localStorage.getItem('pitchglider:words:'+id)}catch(e){}if(w==null)w=(getSong(id)||{}).words||'';return w.trim()?w.trim().split(/[\s\-]+/):[]}
 function songOn(){return $('order').value.startsWith('song:')}
-function playSong(){const id=$('order').value.slice(5),sg=SONGS[id];if(!sg)return;ctx=ctx||new AudioContext();ctx.resume();
+function playSong(){const id=$('order').value.slice(5),sg=getSong(id);if(!sg)return;ctx=ctx||new AudioContext();ctx.resume();
   const ms=sg.notes.filter(n=>n[0]!=null).map(n=>n[0]),b=+$('range').value,shift=12*Math.round((b+6-(Math.min(...ms)+Math.max(...ms))/2)/12),beat=60/(sg.bpm*[0.6,0.75,0.9,1][+$('diff').value])*(sg.beat||1);
   stopSong();let t=0;const ws=songWords(id);let k=0;
   for(const [m,bt] of sg.notes){const d=bt*beat;if(m!=null){const w=ws[k++]||'',mm=m+shift;songTimers.push(setTimeout(()=>{tone(mm,Math.max(0.15,d*0.9));$('songNow').textContent=(w&&w!=='~'?w+'  ·  ':'')+sol(mm)},t*1000))}t+=d}
@@ -296,7 +338,7 @@ function newGame(){
   SC=$('scale').value.split(',').map(Number);KEY=+$('key').value;S.order=$('order').value;S.idx=0;S.dir=1;
   S.notes=[];for(let m=lo+1;m<=hi-1;m++)if(inScale(m))S.notes.push(m);
   if(S.order.startsWith('song:')){ // follow a song: one gate per note, steady speed, notes moved into your voice range
-    const sg=SONGS[S.order.slice(5)],ms=sg.notes.filter(n=>n[0]!=null).map(n=>n[0]),mn=Math.min(...ms),mx=Math.max(...ms);
+    const sg=getSong(S.order.slice(5)),ms=sg.notes.filter(n=>n[0]!=null).map(n=>n[0]),mn=Math.min(...ms),mx=Math.max(...ms);
     const shift=12*Math.round((base+6-(mn+mx)/2)/12);lo=mn+shift-2;hi=mx+shift+2;KEY=sg.key;SC=sg.scale.split(',').map(Number);
     S.L.acc=0;S.speed=S.L.v0;S.song=sg.notes.map(([m,b])=>[m==null?null:m+shift,b]);S.words=songWords($('order').value.slice(5));S.wi=0;S.practice=$('songLives').value==='practice';S.beat=60/(sg.bpm*[0.6,0.75,0.9,1][+$('diff').value])*(sg.beat||1)*(S.ear?1.3:1);
     S.notes=[...new Set(S.song.filter(n=>n[0]!=null).map(n=>n[0]))].sort((a,b)=>a-b);
@@ -441,13 +483,23 @@ async function go(){stopSong();
 $('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('key').value,sc=$('scale').value.split(',').map(Number),b=+$('range').value;
   let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
 const SET=['gmode','range','diff','key','scale','order','guide','vmode','songLives'];
-try{const sv=JSON.parse(localStorage.getItem('pitchglider:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
+try{const sv=JSON.parse(localStorage.getItem('pitchglider:set')||'{}');window.__savedOrder=sv.order;for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
 {const qm=new URLSearchParams(location.search).get('mode');if(qm==='ear'||qm==='classic')$('gmode').value=qm}
 function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${$('gmode').value==='ear'?'By ear · ':''}${t('diff')} · ${t('range')} · ${songOn()?t('order'):t('key').split(' ')[0]+' '+t('scale').toLowerCase()+' · '+t('order').toLowerCase()}`;
   try{const sv={fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchglider:set',JSON.stringify(sv))}catch(e){}}
 for(const k of [...SET,'fold'])$(k).addEventListener('change',summary);summary();
 function songUI(){const on=songOn();$('songSet').hidden=!on;$('songCard').hidden=!on;$('listen').hidden=on;if(on)$('songWords').value=songWords($('order').value.slice(5)).join(' ');stopSong();$('songListen').textContent='▶ Listen to the song first'}
-$('order').addEventListener('change',songUI);songUI();
+$('order').addEventListener('change',songUI);
+fillMySongs();{const so=window.__savedOrder;if(so&&so.startsWith('song:my:')&&[...$('order').options].some(o=>o.value===so))$('order').value=so}songUI();summary();
+let myEdit=null;
+function openMy(id){const x=id?mySongs().find(y=>y.id===id):null;myEdit=x?x.id:null;$('myBox').hidden=false;$('myName').value=x?x.name:'';$('myNotes').value=x?notesText(x.notes):'';$('myBpm').value=x?x.bpm:100;$('myDel').hidden=!x;$('myMsg').textContent='Your songs stay on this phone only.'}
+$('myAdd').onclick=()=>{const v=$('order').value;openMy(v.startsWith('song:my:')?v.slice(8):null)};
+$('myCancel').onclick=()=>{$('myBox').hidden=true};
+$('myMidi').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const r=readMidi(await f.arrayBuffer());$('myNotes').value=notesText(r.notes);$('myBpm').value=r.bpm;if(!$('myName').value)$('myName').value=f.name.replace(/\.[^.]+$/,'');$('myMsg').textContent='Loaded '+r.notes.filter(n=>n[0]!=null).length+' notes. Check them, then Save.'}catch(err){$('myMsg').textContent='Could not read that MIDI file: '+err.message}e.target.value=''};
+$('mySave').onclick=()=>{try{const notes=parseNotes($('myNotes').value),name=$('myName').value.trim()||'My song',bpm=Math.max(30,Math.min(240,+$('myBpm').value||100));
+  const a=mySongs();let x=myEdit&&a.find(y=>y.id===myEdit);if(!x){x={id:Date.now().toString(36)};a.push(x)}Object.assign(x,{name,bpm,notes});saveMySongs(a);
+  fillMySongs('song:my:'+x.id);myEdit=x.id;songUI();summary();$('myDel').hidden=false;$('myMsg').textContent='Saved. It is selected now: press Listen or Start.'}catch(err){$('myMsg').textContent=err.message}};
+$('myDel').onclick=()=>{if(!myEdit||!confirm('Delete this song from your phone?'))return;saveMySongs(mySongs().filter(y=>y.id!==myEdit));myEdit=null;fillMySongs();$('order').value='up';$('myBox').hidden=true;songUI();summary()};
 $('songWords').oninput=()=>{try{localStorage.setItem('pitchglider:words:'+$('order').value.slice(5),$('songWords').value)}catch(e){}};
 $('songListen').onclick=()=>{if(songTimers.length){stopSong();$('songListen').textContent='▶ Listen to the song first'}else playSong()};
 function showSettings(on){$('settings').hidden=!on;$('setBtn').setAttribute('aria-expanded',on);$('setBtn').textContent=on?'Hide settings':'Settings'}
