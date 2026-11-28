@@ -78,7 +78,7 @@ a{color:var(--lo)}
     <div class="row">
       <select id="key" aria-label="Scale key"><option value="0">Do (C)</option><option value="2">Re (D)</option><option value="4">Mi (E)</option><option value="5">Fa (F)</option><option value="7">Sol (G)</option><option value="9">La (A)</option><option value="11">Si (B)</option><option value="1">Do# (C#)</option><option value="3">Re# (D#)</option><option value="6">Fa# (F#)</option><option value="8">Sol# (G#)</option><option value="10">La# (A#)</option></select>
       <select id="scale" aria-label="Scale type"><option value="0,2,4,5,7,9,11">Major</option><option value="0,2,3,5,7,8,10">Minor</option><option value="0,2,4,7,9">Pentatonic major</option><option value="0,3,5,7,10">Pentatonic minor</option><option value="0,4,7">Major chord only (Do-Mi-Sol)</option><option value="0,1,2,3,4,5,6,7,8,9,10,11">All notes (chromatic)</option></select>
-      <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option><optgroup label="Songs"><option value="song:yonatan">Song: Yonatan HaKatan</option><option value="song:hevenu">Song: Hevenu Shalom Aleichem</option><option value="song:sevivon">Song: Sevivon Sov Sov Sov</option></optgroup></select>
+      <select id="order" aria-label="Note order"><option value="up">Up and down the scale</option><option value="rand">Random notes</option><option value="near">Random, small steps</option><optgroup label="Songs"><option value="song:yonatan">Song: Yonatan HaKatan</option><option value="song:hevenu">Song: Hevenu Shalom Aleichem</option><option value="song:sevivon">Song: Sevivon Sov Sov Sov</option><option value="song:yemei">Song: Yemei HaHanukkah</option></optgroup></select>
     </div>
     <div class="row"><select id="guide" aria-label="Guide note"><option value="hold" selected>Keep playing the note until I pass the gate</option><option value="hint">Play each note once, briefly</option><option value="off">No guide note</option></select></div>
     <div class="row"><select id="vmode" aria-label="Vowels"><option value="off">Vowels: off</option><option value="show" selected>Vowels: show the vowel I sing</option><option value="gates">Vowels: gates ask for a vowel too</option></select>
@@ -232,7 +232,30 @@ function ding(){if(!ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain(
 // Songs (traditional tunes): [midi or null for a rest, beats]; key/scale used for the lanes
 const C4=60,D4=62,E4=64,F4=65,G4=67,A4=69,B4=71,C5=72,E5=76,B3=59,FS4=66;
 const A3=57,CS4=61,BB4=70;
+const D5=74;
 const SONGS={
+ yemei:{bpm:104,key:2,scale:'0,2,3,5,7,8,10',notes:[ // folk tune, from the sheet Yaron sent (D minor, with the repeat and both endings)
+  [A4,.5],
+  [A4,.5],[A4,.5],[A4,.5],[A4,.5],[D5,1],[A4,.5],[A4,.5],
+  [A4,1],[G4,.5],[F4,.5],[G4,1],[F4,.5],[A4,.5],
+  [A4,.5],[A4,.5],[A4,.5],[A4,.5],[D5,1],[A4,.5],[A4,.5],
+  [A4,1],[G4,.5],[F4,.5],[G4,1],[F4,1],
+  [F4,.5],[G4,.5],[A4,.5],[G4,.5],[F4,1],[F4,.5],[F4,.5],
+  [G4,1],[F4,.5],[E4,.5],[F4,2],
+  [F4,.5],[G4,.5],[A4,.5],[G4,.5],[F4,1],[F4,.5],[F4,.5],
+  [G4,1],[F4,.5],[E4,.5],[D4,1],[D4,.5],[F4,.5],
+  [A4,1],[A4,1],[null,1],[D4,.5],[F4,.5],
+  [A4,1],[A4,1],[null,1],[D4,1],
+  [A4,1],[A4,.5],[A4,.5],[BB4,1],[A4,.5],[G4,.5],
+  [A4,4],
+  [A4,1],[A4,.5],[A4,.5],[BB4,1],[A4,.5],[G4,.5],
+  [A4,.5],[A4,.5],[A4,.5],[A4,.5],[BB4,1],[A4,.5],[G4,.5],
+  [F4,1],[F4,.5],[F4,.5],[G4,.5],[G4,.5],[F4,.5],[G4,.5],
+  [A4,4],
+  [A4,1],[A4,.5],[A4,.5],[BB4,1],[A4,.5],[G4,.5],
+  [A4,.5],[A4,.5],[A4,.5],[A4,.5],[BB4,1],[A4,.5],[G4,.5],
+  [F4,1],[F4,.5],[F4,.5],[G4,.5],[G4,.5],[F4,.5],[E4,.5],
+  [D4,3],[null,1],[null,4]]},
  sevivon:{bpm:112,key:2,scale:'0,2,3,5,7,8,10',notes:[
   [D4,1],[D4,1],[E4,2],[F4,1],[F4,1],[E4,2],[A4,1],[A4,1],[G4,.5],[F4,.5],[E4,.5],[D4,.5],[F4,1],[F4,1],[E4,2],
   [D4,1],[D4,1],[E4,2],[F4,1],[F4,1],[G4,2],[A4,1],[A4,1],[A4,1],[A3,1],[D4,1],[D4,1],[D4,1],[null,1],
