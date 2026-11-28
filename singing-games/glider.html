@@ -251,6 +251,13 @@ function playSong(){const id=$('order').value.slice(5),sg=SONGS[id];if(!sg)retur
   for(const [m,bt] of sg.notes){const d=bt*beat;if(m!=null){const w=ws[k++]||'',mm=m+shift;songTimers.push(setTimeout(()=>{tone(mm,Math.max(0.15,d*0.9));$('songNow').textContent=(w&&w!=='~'?w+'  ·  ':'')+sol(mm)},t*1000))}t+=d}
   songTimers.push(setTimeout(()=>{$('songNow').textContent='';$('songListen').textContent='▶ Listen to the song first'},t*1000+300));$('songListen').textContent='■ Stop listening'}
 let songTimers=[];function stopSong(){songTimers.forEach(clearTimeout);songTimers=[];if($('songNow'))$('songNow').textContent=''}
+function melTone(m,at,dur,vol){ // one note of the song, scheduled exactly on the audio clock
+  const o=ctx.createOscillator(),o2=ctx.createOscillator(),gn=ctx.createGain(),g2=ctx.createGain();o.type='triangle';o2.type='sine';g2.gain.value=0.2;
+  o.frequency.value=o2.frequency.value=m2f(m);o.connect(gn);o2.connect(g2);g2.connect(gn);gn.connect(ctx.destination);
+  const a=Math.min(0.04,dur/4),rl=Math.min(0.1,dur/3);gn.gain.setValueAtTime(0,at);gn.gain.linearRampToValueAtTime(vol,at+a);gn.gain.setValueAtTime(vol,at+dur-rl);gn.gain.linearRampToValueAtTime(0,at+dur);
+  o.start(at);o2.start(at);o.stop(at+dur+0.02);o2.stop(at+dur+0.02);(S.melo=S.melo||[]).push(o,o2);
+}
+function stopMel(){if(S&&S.melo){for(const o of S.melo){try{o.stop()}catch(e){}}S.melo=[];for(const o of S.obs)if(o.sch&&ctx&&S.c0!=null&&S.c0+(o.x-PX()-14)/S.speed>ctx.currentTime)o.sch=0}}
 function newGame(){
   const base=+$('range').value;KEY=+$('key').value;let root=base+((KEY-base)%12+12)%12;if(root>base+5)root-=12;lo=root-2;hi=root+14;
   const ear=$('gmode').value==='ear',L=Object.assign({},LV[+$('diff').value]);if(ear){L.lead+=2.5;L.space+=1.5}S={ear,L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap,perf:Math.max(0.2,Math.min(0.5,L.gap*0.22)),perfects:0};
@@ -294,7 +301,11 @@ function heard(){
 }
 const PX=()=>Math.min(W*0.28,220);
 function step(dt){
-  S.t+=dt;S.speed=Math.min(S.L.vmax,S.L.v0+S.t*S.L.acc);S.dist+=S.speed*dt;
+  if(S.song&&ctx){ // songs run on the audio clock, so the music and the gates can't drift apart
+    const now=ctx.currentTime;if(S.c0==null)S.c0=now-S.t;const nt=now-S.c0;dt=Math.max(0,Math.min(0.25,nt-S.t));S.t=nt;S.dist=S.speed*S.t;
+    const vol=$('guide').value==='hold'?0.18:$('guide').value==='hint'?0.09:0;
+    if(vol)for(const o of S.obs){if(o.sch)continue;const st=S.c0+(o.x-PX()-14)/S.speed;if(st<now-0.03){o.sch=1;continue}if(st-now<3){o.sch=1;melTone(o.note,st,o.len/S.speed/0.82*0.93,vol)}}
+  }else{S.t+=dt;S.speed=Math.min(S.L.vmax,S.L.v0+S.t*S.L.acc);S.dist+=S.speed*dt;}
   const ahead=S.obs.find(o=>o.x+o.len>S.dist+PX()-20);
   let m=heard();$('hNote').textContent=m==null?'–':both(m);
   S.vowel=m!=null&&$('vmode').value!=='off'?vowelNow():(vq=[],null);$('hVow').textContent=S.vowel?S.vowel.toUpperCase():'–';
@@ -309,7 +320,7 @@ function step(dt){
   const px=S.dist+PX(),r=14;let inside=false,perfNow=false;
   for(const o of S.obs){
     const sx=o.x-S.dist;
-    if($('guide').value==='hint'&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
+    if($('guide').value==='hint'&&!S.song&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
     const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=S.ear?Y((lo+hi)/2):Y(o.note);
     if(px+r>o.x&&px-r<o.x+o.len){
       if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;if(!S.practice)S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
@@ -326,7 +337,7 @@ function step(dt){
   for(const p of S.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;p.life-=dt}S.parts=S.parts.filter(p=>p.life>0);
   $('hScore').textContent=Math.round(S.score).toLocaleString();$('hGates').textContent=S.gates;$('hLives').textContent='♥'.repeat(Math.max(0,S.lives))+'♡'.repeat(S.L.lives-Math.max(0,S.lives));
   S.inside=inside;
-  if($('guide').value==='hold'){const tgt=S.obs.find(o=>!o.passed&&o.x+o.len>px-r-2&&o.x-S.dist<PX()+S.speed*S.L.lead);guide(tgt?tgt.note:null)}else guide(null);
+  if($('guide').value==='hold'&&!S.song){const tgt=S.obs.find(o=>!o.passed&&o.x+o.len>px-r-2&&o.x-S.dist<PX()+S.speed*S.L.lead);guide(tgt?tgt.note:null)}else guide(null);
   if(ahead){$('tWord').textContent=ahead.word&&ahead.word!=='~'?ahead.word:ahead.word==='~'?'(hold)':'';$('tNote').textContent=sol(ahead.note)+' ';const ab=document.createElement('small');ab.textContent=abc(ahead.note);$('tNote').appendChild(ab);const tg=Math.max(0.5,S.gap*0.8);
     $('tVow').hidden=!ahead.vowel;if(ahead.vowel)$('tVow').textContent='on '+VSAY[ahead.vowel];const vOk=!ahead.vowel||S.vowel===ahead.vowel;
     const dd=S.pitch==null?null:S.pitch-ahead.note;$('target').classList.toggle('perfect',dd!=null&&Math.abs(dd)<S.perf&&vOk);$('tDir').textContent=dd==null?'sing now…':Math.abs(dd)<S.perf&&!vOk?'note ✓ now say “'+ahead.vowel+'”':Math.abs(dd)<S.perf?'★ perfect!':Math.abs(dd)<=tg?'✓ hold it!':dd<0?'▲ go higher':'▼ go lower';
@@ -385,7 +396,7 @@ function loop(ts){
   draw();requestAnimationFrame(loop);
 }
 function end(){
-  running=false;guide(null);$('pauseBtn').hidden=true;$('hud').hidden=true;$('target').hidden=true;
+  running=false;guide(null);stopMel();$('pauseBtn').hidden=true;$('hud').hidden=true;$('target').hidden=true;
   const sc=Math.round(S.score);try{best=+localStorage.getItem('pitchglider:best')||0;if(sc>best){localStorage.setItem('pitchglider:best',sc);best=sc;$('eBest').textContent='New high score!'}else $('eBest').textContent='High score: '+best.toLocaleString()}catch(e){$('eBest').textContent=' '}
   $('eScore').textContent=sc.toLocaleString();$('eGates').textContent=S.gates;$('ePerf').textContent=S.perfects;$('eSec').textContent=S.onSec.toFixed(1)+' s';$('eHold').textContent=S.holdBest.toFixed(1)+' s';$('eDist').textContent=Math.round(S.dist/100)+' m';
   $('end').hidden=false;
@@ -434,8 +445,8 @@ $('cGo').onclick=async()=>{
 };
 function micUI(){if(mic){$('micOn').textContent='Mic is on ✓';$('micOn').classList.add('on')}}
 $('micOn').onclick=async()=>{$('err').hidden=true;try{await startMic();micUI()}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.'}};
-function pause(){if(!running)return;running=false;guide(null);$('pauseBtn').hidden=true;$('pause').hidden=false}
-function resume(){$('pause').hidden=true;$('pauseBtn').hidden=false;last=performance.now();running=true}
+function pause(){if(!running)return;running=false;guide(null);stopMel();if(S.song&&ctx)S.pauseAt=ctx.currentTime;$('pauseBtn').hidden=true;$('pause').hidden=false}
+function resume(){$('pause').hidden=true;$('pauseBtn').hidden=false;last=performance.now();if(S.song&&S.pauseAt!=null&&S.c0!=null){S.c0+=ctx.currentTime-S.pauseAt;S.pauseAt=null}running=true}
 $('pauseBtn').onclick=pause;$('resumeBtn').onclick=resume;
 $('quitBtn').onclick=()=>{$('pause').hidden=true;end()};
 $('pSetBtn').onclick=()=>{$('pause').hidden=true;$('hud').hidden=true;$('target').hidden=true;$('start').hidden=false;$('goBtn').textContent='Start new game';showSettings(true)};
