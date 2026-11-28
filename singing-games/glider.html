@@ -58,7 +58,7 @@ a{color:var(--lo)}
   <div id="lives"><b id="hLives">♥♥♥</b><span>lives</span></div>
 </div>
 
-<div id="target" hidden><span>Sing</span><b id="tNote">–</b><em id="tVow" hidden></em><i id="tDir">&nbsp;</i></div>
+<div id="target" hidden><span>Sing</span><strong id="tWord" style="display:block;font-size:26px;color:#ffd166;line-height:1.1"></strong><b id="tNote">–</b><em id="tVow" hidden></em><i id="tDir">&nbsp;</i></div>
 <div class="over" id="start">
   <div class="card">
     <h1>Pitch Glider</h1>
@@ -66,6 +66,7 @@ a{color:var(--lo)}
     <select id="gmode" aria-label="Game" style="width:100%;margin-bottom:6px"><option value="classic">Classic: you can see where each note is</option><option value="ear">By ear: every gate in the middle, find the note by listening</option></select>
     <p id="sumLine" style="font-size:14px"></p>
     <button id="micOn" style="width:100%;margin-bottom:4px">Turn on mic</button>
+    <div id="songCard" hidden style="margin-bottom:6px"><button id="songListen" style="width:100%">▶ Listen to the song first</button><p id="songNow" style="text-align:center;font-size:22px;font-weight:800;color:#ffd166;min-height:1.4em;margin:6px 0 0"></p></div>
     <button class="go" id="goBtn">Start singing</button>
     <button id="setBtn" style="width:100%;margin-top:8px" aria-expanded="false">Settings</button>
     <a href="walk.html" style="display:block;margin-top:8px;text-align:center;padding:12px;border-radius:12px;border:1px solid var(--line);background:#33141f;color:var(--ink);text-decoration:none;font-weight:600">Walking game: sound only, no screen</a>
@@ -85,6 +86,11 @@ a{color:var(--lo)}
     <p id="calState" style="font-size:14px;margin-top:0"></p>
     <label><input type="checkbox" id="fold" checked> Any octave counts</label><br>
     <button id="listen" style="margin-top:6px">Listen to the scale</button>
+    <div id="songSet" hidden style="margin-top:8px">
+      <div class="row"><select id="songLives" aria-label="Song lives"><option value="practice" selected>Song: play to the end, never stop</option><option value="game">Song: game with lives, repeats</option></select></div>
+      <label style="font-size:14px;display:block;margin-top:6px">Words to show on the gates (one syllable per note, spaces between):<textarea id="songWords" rows="3" style="width:100%;font:inherit;font-size:15px;background:#33141f;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:4px"></textarea></label>
+      <p style="font-size:13px;margin:2px 0 0;color:var(--mute)">Use ~ to hold a syllable over the next note. Your words are saved on this phone only.</p>
+    </div>
     </div>
     <p class="err" id="err" hidden></p>
     <p style="font-size:14px">Use headphones: otherwise the mic hears the guide note too. Bluetooth headphones on Android: connect them after you press Start. <a href="./">All games</a></p>
@@ -231,12 +237,20 @@ const SONGS={
   [G4,1],[E4,1],[E4,2],[F4,1],[D4,1],[D4,2],[C4,1],[E4,1],[G4,1],[G4,1],[C4,4],
   [D4,1],[D4,1],[D4,1],[D4,1],[D4,1],[E4,1],[F4,2],[E4,1],[E4,1],[E4,1],[E4,1],[E4,1],[F4,1],[G4,2],
   [G4,1],[E4,1],[E4,2],[F4,1],[D4,1],[D4,2],[C4,1],[E4,1],[G4,1],[G4,1],[C4,4],[null,4]]},
- hevenu:{bpm:84,beat:0.5,key:4,scale:'0,2,3,5,7,8,10',notes:[
+ hevenu:{bpm:84,beat:0.5,key:4,scale:'0,2,3,5,7,8,10',words:'He ve nu sha lom a lei chem He ve nu sha lom a lei chem He ve nu sha lom a lei ~ chem He ve nu sha lom sha lom sha lom a lei chem',notes:[
   [B3,1],[E4,1],[G4,1],[B4,4],[G4,3],[FS4,1],[FS4,1],[E4,3],
   [null,1],[E4,1],[G4,1],[B4,1],[E5,4],[C5,3],[B4,1],[B4,1],[A4,3],
   [null,1],[A4,1],[B4,1],[C5,1],[B4,3],[FS4,1],[B4,3],[A4,1],[A4,1],[G4,3],
   [null,1],[FS4,1],[G4,1],[A4,1],[B4,2],[A4,2],[G4,2],[FS4,2],[B4,1.5],[A4,0.5],[G4,1],[FS4,1],[E4,4],[null,4]]}
 };
+function songWords(id){let w=null;try{w=localStorage.getItem('pitchglider:words:'+id)}catch(e){}if(w==null)w=SONGS[id].words||'';return w.trim()?w.trim().split(/[\s\-]+/):[]}
+function songOn(){return $('order').value.startsWith('song:')}
+function playSong(){const id=$('order').value.slice(5),sg=SONGS[id];if(!sg)return;ctx=ctx||new AudioContext();ctx.resume();
+  const ms=sg.notes.filter(n=>n[0]!=null).map(n=>n[0]),b=+$('range').value,shift=12*Math.round((b+6-(Math.min(...ms)+Math.max(...ms))/2)/12),beat=60/(sg.bpm*[0.6,0.75,0.9,1][+$('diff').value])*(sg.beat||1);
+  stopSong();let t=0;const ws=songWords(id);let k=0;
+  for(const [m,bt] of sg.notes){const d=bt*beat;if(m!=null){const w=ws[k++]||'',mm=m+shift;songTimers.push(setTimeout(()=>{tone(mm,Math.max(0.15,d*0.9));$('songNow').textContent=(w&&w!=='~'?w+'  ·  ':'')+sol(mm)},t*1000))}t+=d}
+  songTimers.push(setTimeout(()=>{$('songNow').textContent='';$('songListen').textContent='▶ Listen to the song first'},t*1000+300));$('songListen').textContent='■ Stop listening'}
+let songTimers=[];function stopSong(){songTimers.forEach(clearTimeout);songTimers=[];if($('songNow'))$('songNow').textContent=''}
 function newGame(){
   const base=+$('range').value;KEY=+$('key').value;let root=base+((KEY-base)%12+12)%12;if(root>base+5)root-=12;lo=root-2;hi=root+14;
   const ear=$('gmode').value==='ear',L=Object.assign({},LV[+$('diff').value]);if(ear){L.lead+=2.5;L.space+=1.5}S={ear,L,t:0,dist:0,speed:L.v0,y:GROUND(),vy:0,pitch:null,obs:[],nextX:PX()+L.v0*4,lives:L.lives,inv:0,score:0,gates:0,onSec:0,hold:0,holdBest:0,shake:0,parts:[],base,gap:L.gap,perf:Math.max(0.2,Math.min(0.5,L.gap*0.22)),perfects:0};
@@ -245,7 +259,7 @@ function newGame(){
   if(S.order.startsWith('song:')){ // follow a song: one gate per note, steady speed, notes moved into your voice range
     const sg=SONGS[S.order.slice(5)],ms=sg.notes.filter(n=>n[0]!=null).map(n=>n[0]),mn=Math.min(...ms),mx=Math.max(...ms);
     const shift=12*Math.round((base+6-(mn+mx)/2)/12);lo=mn+shift-2;hi=mx+shift+2;KEY=sg.key;SC=sg.scale.split(',').map(Number);
-    S.L.acc=0;S.speed=S.L.v0;S.song=sg.notes.map(([m,b])=>[m==null?null:m+shift,b]);S.beat=60/(sg.bpm*[0.6,0.75,0.9,1][+$('diff').value])*(sg.beat||1)*(S.ear?1.3:1);
+    S.L.acc=0;S.speed=S.L.v0;S.song=sg.notes.map(([m,b])=>[m==null?null:m+shift,b]);S.words=songWords($('order').value.slice(5));S.wi=0;S.practice=$('songLives').value==='practice';S.beat=60/(sg.bpm*[0.6,0.75,0.9,1][+$('diff').value])*(sg.beat||1)*(S.ear?1.3:1);
     S.notes=[...new Set(S.song.filter(n=>n[0]!=null).map(n=>n[0]))].sort((a,b)=>a-b);
   }
   if(S.order==='up'){const t=S.notes.findIndex(m=>((m-KEY)%12+12)%12===0);S.run=S.notes.slice(Math.max(0,t),Math.max(0,t)+SC.length+1);if(S.run.length<3)S.run=S.notes.slice(0,SC.length+1)}
@@ -253,9 +267,10 @@ function newGame(){
 }
 function spawnUntil(){
   while(S.song&&S.nextX<S.dist+W*1.6){
+    if(S.practice&&S.idx>=S.song.length)break; // practice: the song plays once, to the end
     const [note,b]=S.song[S.idx%S.song.length];S.idx++;const secs=b*S.beat;
-    if(note!=null){const vw=$('vmode').value==='gates'?VOW[Math.floor(Math.random()*5)]:null;
-      S.obs.push({vowel:vw,x:S.nextX,len:secs*S.speed*0.82,note,hinted:false,passed:false,hit:false})}
+    if(note!=null){const vw=$('vmode').value==='gates'?VOW[Math.floor(Math.random()*5)]:null,w=S.words[S.wi++%Math.max(1,S.song.filter(n=>n[0]!=null).length)]||'';
+      S.obs.push({vowel:vw,x:S.nextX,len:secs*S.speed*0.82,note,word:w==='~'?'~':w,last:S.practice&&S.song.slice(S.idx).every(n=>n[0]==null),hinted:false,passed:false,hit:false})}
     S.nextX+=secs*S.speed;
   }
   while(!S.song&&S.nextX<S.dist+W*1.6){
@@ -297,10 +312,10 @@ function step(dt){
     if($('guide').value==='hint'&&!o.hinted&&sx<PX()+S.speed*S.L.lead){o.hinted=true;tone(o.note,0.8)}
     const gh=Math.max(r+10,S.gap*(GROUND()-TOP())/(hi-lo)),gy=S.ear?Y((lo+hi)/2):Y(o.note);
     if(px+r>o.x&&px-r<o.x+o.len){
-      if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
+      if(S.y-r<gy-gh||S.y+r>gy+gh){if(S.inv<=0&&!o.hit){o.hit=true;if(!S.practice)S.lives--;S.inv=1.4;S.shake=0.4;S.hold=0;if(S.lives<=0)return end()}}
       else if(S.pitch!=null){inside=true;o.inF=(o.inF||0)+dt;const pf=Math.abs(S.pitch-o.note)<S.perf&&(!o.vowel||S.vowel===o.vowel);if(pf){o.perfF=(o.perfF||0)+dt;perfNow=true}}
     }
-    if(!o.passed&&px-r>o.x+o.len){o.passed=true;if(!o.hit){S.gates++;S.score+=50+Math.round(o.len/S.speed*40);const need=o.len/S.speed;
+    if(!o.passed&&px-r>o.x+o.len){o.passed=true;if(o.last)setTimeout(()=>{if(running)end()},1200);if(!o.hit){S.gates++;S.score+=50+Math.round(o.len/S.speed*40);const need=o.len/S.speed;
       if((o.perfF||0)>=Math.max(0.3,need*0.7)){S.perfects++;S.score+=200;fanfare();burst(PX(),S.y,'255,209,102',40);bigPop('Perfect gate!','+200 · '+S.perfects+(S.perfects>1?' perfect gates':' perfect gate'))}else{ding();burst(PX(),S.y)}}}
   }
   if(perfNow){S.score+=dt*30;S.sparkT=(S.sparkT||0)-dt;if(S.sparkT<=0){S.sparkT=0.05;S.parts.push({x:PX()-10,y:S.y+(Math.random()-0.5)*16,vx:-120-Math.random()*60,vy:(Math.random()-0.5)*60,life:0.5,c:'255,209,102'})}}
@@ -312,7 +327,7 @@ function step(dt){
   $('hScore').textContent=Math.round(S.score).toLocaleString();$('hGates').textContent=S.gates;$('hLives').textContent='♥'.repeat(Math.max(0,S.lives))+'♡'.repeat(S.L.lives-Math.max(0,S.lives));
   S.inside=inside;
   if($('guide').value==='hold'){const tgt=S.obs.find(o=>!o.passed&&o.x+o.len>px-r-2&&o.x-S.dist<PX()+S.speed*S.L.lead);guide(tgt?tgt.note:null)}else guide(null);
-  if(ahead){$('tNote').textContent=sol(ahead.note)+' ';const ab=document.createElement('small');ab.textContent=abc(ahead.note);$('tNote').appendChild(ab);const tg=Math.max(0.5,S.gap*0.8);
+  if(ahead){$('tWord').textContent=ahead.word&&ahead.word!=='~'?ahead.word:ahead.word==='~'?'(hold)':'';$('tNote').textContent=sol(ahead.note)+' ';const ab=document.createElement('small');ab.textContent=abc(ahead.note);$('tNote').appendChild(ab);const tg=Math.max(0.5,S.gap*0.8);
     $('tVow').hidden=!ahead.vowel;if(ahead.vowel)$('tVow').textContent='on '+VSAY[ahead.vowel];const vOk=!ahead.vowel||S.vowel===ahead.vowel;
     const dd=S.pitch==null?null:S.pitch-ahead.note;$('target').classList.toggle('perfect',dd!=null&&Math.abs(dd)<S.perf&&vOk);$('tDir').textContent=dd==null?'sing now…':Math.abs(dd)<S.perf&&!vOk?'note ✓ now say “'+ahead.vowel+'”':Math.abs(dd)<S.perf?'★ perfect!':Math.abs(dd)<=tg?'✓ hold it!':dd<0?'▲ go higher':'▼ go lower';
     $('tDir').style.color=dd==null?'#c9a9a6':Math.abs(dd)<S.perf&&!vOk?'#34d6a6':Math.abs(dd)<S.perf?'#ffd166':Math.abs(dd)<=tg?'#34d6a6':dd<0?'#5cc3ff':'#ff8a4c'}
@@ -345,7 +360,7 @@ function draw(){
     g.fillStyle='#34d6a633';g.fillRect(x,gy-gh,o.len,gh*2);
     const lit=S.perfNow&&x<PX()&&x+o.len>PX();if(lit){g.fillStyle='#ffd16622';g.fillRect(x,gy-S.perf*lh,o.len,2*S.perf*lh)}
     g.strokeStyle=lit?'#ffd166':'#34d6a666';g.lineWidth=lit?3:1;g.setLineDash(lit?[]:[6,6]);g.beginPath();g.moveTo(x,gy);g.lineTo(x+o.len,gy);g.stroke();g.setLineDash([]);g.lineWidth=1;
-    g.fillStyle='#f6ead9';g.font='800 20px Rubik,sans-serif';g.textAlign='center';g.fillText(both(o.note),x+o.len/2,gy-gh-14);if(o.vowel){g.font='800 24px Rubik,sans-serif';g.fillStyle='#ffd166';g.fillText(o.vowel.toUpperCase(),x+o.len/2,gy+gh+26)};g.textAlign='start';
+    const nar=o.len<80;g.fillStyle='#f6ead9';g.font=(nar?'800 14px':'800 20px')+' Rubik,sans-serif';g.textAlign='center';g.fillText(nar?sol(o.note):both(o.note),x+o.len/2,gy-gh-14);if(o.word){g.font=(nar?'800 17px':'800 24px')+' Rubik,sans-serif';g.fillStyle='#ffd166';g.fillText(o.word,x+o.len/2,gy-gh-42)}if(o.vowel){g.font='800 24px Rubik,sans-serif';g.fillStyle='#ffd166';g.fillText(o.vowel.toUpperCase(),x+o.len/2,gy+gh+26)};g.textAlign='start';
   }
   // trail
   for(const p of S.parts){g.fillStyle=`rgba(${p.c||'52,214,166'},${Math.min(1,p.life*1.5)})`;g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill()}
@@ -375,19 +390,23 @@ function end(){
   $('eScore').textContent=sc.toLocaleString();$('eGates').textContent=S.gates;$('ePerf').textContent=S.perfects;$('eSec').textContent=S.onSec.toFixed(1)+' s';$('eHold').textContent=S.holdBest.toFixed(1)+' s';$('eDist').textContent=Math.round(S.dist/100)+' m';
   $('end').hidden=false;
 }
-async function go(){
+async function go(){stopSong();
   $('err').hidden=true;
   try{await startMic()}catch(e){$('err').hidden=false;$('err').textContent='The microphone is blocked. Allow it for this site in Chrome (lock icon next to the address), then try again.';return}
   newGame();$('start').hidden=true;$('end').hidden=true;$('hud').hidden=false;$('target').hidden=false;$('vBox').hidden=$('vmode').value==='off';$('pauseBtn').hidden=false;micUI();running=true;
 }
 $('listen').onclick=()=>{ctx=ctx||new AudioContext();ctx.resume();const k=+$('key').value,sc=$('scale').value.split(',').map(Number),b=+$('range').value;
   let root=b+((k-b)%12+12)%12;if(root>b+5)root-=12;const ns=[...sc.map(x=>root+x),root+12];[...ns,...ns.slice(0,-1).reverse()].forEach((m,i)=>setTimeout(()=>tone(m,0.45),i*480))};
-const SET=['gmode','range','diff','key','scale','order','guide','vmode'];
+const SET=['gmode','range','diff','key','scale','order','guide','vmode','songLives'];
 try{const sv=JSON.parse(localStorage.getItem('pitchglider:set')||'{}');for(const k of SET)if(sv[k]!=null&&[...$(k).options].some(o=>o.value===sv[k]))$(k).value=sv[k];if(sv.fold!=null)$('fold').checked=sv.fold}catch(e){}
 {const qm=new URLSearchParams(location.search).get('mode');if(qm==='ear'||qm==='classic')$('gmode').value=qm}
-function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${$('gmode').value==='ear'?'By ear · ':''}${t('diff')} · ${t('range')} · ${t('key').split(' ')[0]} ${t('scale').toLowerCase()} · ${t('order').toLowerCase()}`;
+function summary(){const t=id=>$(id).selectedOptions[0].text;$('sumLine').textContent=`${$('gmode').value==='ear'?'By ear · ':''}${t('diff')} · ${t('range')} · ${songOn()?t('order'):t('key').split(' ')[0]+' '+t('scale').toLowerCase()+' · '+t('order').toLowerCase()}`;
   try{const sv={fold:$('fold').checked};for(const k of SET)sv[k]=$(k).value;localStorage.setItem('pitchglider:set',JSON.stringify(sv))}catch(e){}}
 for(const k of [...SET,'fold'])$(k).addEventListener('change',summary);summary();
+function songUI(){const on=songOn();$('songSet').hidden=!on;$('songCard').hidden=!on;$('listen').hidden=on;if(on)$('songWords').value=songWords($('order').value.slice(5)).join(' ');stopSong();$('songListen').textContent='▶ Listen to the song first'}
+$('order').addEventListener('change',songUI);songUI();
+$('songWords').oninput=()=>{try{localStorage.setItem('pitchglider:words:'+$('order').value.slice(5),$('songWords').value)}catch(e){}};
+$('songListen').onclick=()=>{if(songTimers.length){stopSong();$('songListen').textContent='▶ Listen to the song first'}else playSong()};
 function showSettings(on){$('settings').hidden=!on;$('setBtn').setAttribute('aria-expanded',on);$('setBtn').textContent=on?'Hide settings':'Settings'}
 $('setBtn').onclick=()=>showSettings($('settings').hidden);
 let calRun=null;
