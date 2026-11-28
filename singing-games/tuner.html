@@ -168,9 +168,10 @@ function draw(trace,t,live){
   cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
   const back=6,LX=50,X0=live?W-40:LX+(W-LX)*0.6,span=live?back:back/0.6;
   const last=trace.length?traceAt(trace,t)||null:null;
-  {const w=trace.filter(p=>p.t>t-4&&p.t<=t+1).map(p=>p.m).sort((a,b)=>a-b),tgt=w.length?w[w.length>>1]:(vc==null?57:vc);
-   vc=vc==null||Math.abs(vc-tgt)>10?tgt:vc+(tgt-vc)*0.04}
-  const lo=vc-7,hi=vc+7,lh=H/(hi-lo),y=m=>H-(m-lo)*lh,x=tt=>X0-(t-tt)/span*(X0-LX);
+  {const HALF=8,EDGE=HALF-2,w=trace.filter(p=>p.t>t-1.5&&p.t<=t+0.5).map(p=>p.m).sort((a,b)=>a-b),tgt=last?last.m:w.length?w[w.length>>1]:(vc==null?57:vc);
+   vc=vc==null?tgt:vc+(tgt-vc)*0.12;
+   if(last){if(last.m>vc+EDGE)vc=last.m-EDGE;if(last.m<vc-EDGE)vc=last.m+EDGE}} // your note is never off screen
+  const lo=vc-8,hi=vc+8,lh=H/(hi-lo),y=m=>H-(m-lo)*lh,x=tt=>X0-(t-tt)/span*(X0-LX);
   const curNote=last?Math.round(last.m):null,j=last?judge(last.m):null;
   cx.textBaseline='middle';
   for(let m=Math.ceil(lo-0.5);m<=Math.floor(hi+0.5);m++){
